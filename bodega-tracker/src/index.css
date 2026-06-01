@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #0d0f14;
+  color: #e8eaf0;
+  font-family: 'Syne', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  margin: 0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #161921; }
+::-webkit-scrollbar-thumb { background: #1e2330; border-radius: 2px; }
+
+/* Remove number input spinners */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
+
+/* Date input color fix on dark */
+input[type=date]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+
+/* Safe area insets for notched phones */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 8px); }
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
