@@ -1,13 +1,3 @@
-import { PRODUCTS } from './products.js'
-
-// Build keyword → productId lookup (all normalized)
-const KEYWORD_MAP = {}
-for (const product of PRODUCTS) {
-  for (const kw of product.keywords) {
-    KEYWORD_MAP[normalize(kw)] = product.id
-  }
-}
-
 function normalize(str) {
   return str
     .toLowerCase()
@@ -33,22 +23,29 @@ function levenshtein(a, b) {
   return dp[m][n]
 }
 
-function findProduct(word) {
+function buildKeywordMap(products) {
+  const map = {}
+  for (const product of products) {
+    for (const kw of product.keywords) {
+      map[normalize(kw)] = product.id
+    }
+  }
+  return map
+}
+
+function findProduct(word, keywordMap) {
   const norm = normalize(word)
   if (!norm) return null
 
-  // Exact match
-  if (KEYWORD_MAP[norm]) return KEYWORD_MAP[norm]
+  if (keywordMap[norm]) return keywordMap[norm]
 
-  // Substring match
-  for (const [kw, id] of Object.entries(KEYWORD_MAP)) {
+  for (const [kw, id] of Object.entries(keywordMap)) {
     if (kw.includes(norm) || norm.includes(kw)) return id
   }
 
-  // Fuzzy match (Levenshtein ≤ 2 for words ≥ 4 chars)
   if (norm.length >= 4) {
     let best = null, bestDist = 3
-    for (const [kw, id] of Object.entries(KEYWORD_MAP)) {
+    for (const [kw, id] of Object.entries(keywordMap)) {
       const dist = levenshtein(norm, kw)
       if (dist < bestDist) { bestDist = dist; best = id }
     }
@@ -58,13 +55,8 @@ function findProduct(word) {
   return null
 }
 
-/**
- * Parse a free-text string into [{id, qty}] items.
- * Examples:
- *   "1 cafe 2 papel desinfectante jabon" → [{cafe,1},{papel_hig,2},{desinfectante,1},{jabon_manos,1}]
- *   "cafe papel"                         → [{cafe,1},{papel_hig,1}]
- */
-export function parseInput(text) {
+export function parseInput(text, products) {
+  const keywordMap = buildKeywordMap(products)
   const tokens = text.trim().split(/\s+/).filter(Boolean)
   const results = []
   let i = 0
@@ -74,31 +66,28 @@ export function parseInput(text) {
 
     if (!isNaN(num) && num > 0) {
       i++
-      // Try bigram first (e.g. "papel higienico", "bolsas grandes")
       if (i < tokens.length) {
         if (i + 1 < tokens.length) {
           const bigram = tokens[i] + ' ' + tokens[i + 1]
-          const match = findProduct(bigram)
+          const match = findProduct(bigram, keywordMap)
           if (match) { results.push({ id: match, qty: num }); i += 2; continue }
         }
-        const match = findProduct(tokens[i])
+        const match = findProduct(tokens[i], keywordMap)
         if (match) results.push({ id: match, qty: num })
         i++
       }
     } else {
-      // No preceding number → qty = 1; try bigram first
       if (i + 1 < tokens.length) {
         const bigram = tokens[i] + ' ' + tokens[i + 1]
-        const match = findProduct(bigram)
+        const match = findProduct(bigram, keywordMap)
         if (match) { results.push({ id: match, qty: 1 }); i += 2; continue }
       }
-      const match = findProduct(tokens[i])
+      const match = findProduct(tokens[i], keywordMap)
       if (match) results.push({ id: match, qty: 1 })
       i++
     }
   }
 
-  // Merge duplicates
   const merged = {}
   for (const item of results) {
     if (merged[item.id]) merged[item.id].qty += item.qty

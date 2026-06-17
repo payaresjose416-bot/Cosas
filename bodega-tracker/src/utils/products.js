@@ -313,4 +313,6 @@ export const PRODUCTS = [
   },
 ]
 
+export { PRODUCTS as BASE_PRODUCTS }
+
 export const PRODUCT_MAP = Object.fromEntries(PRODUCTS.map(p => [p.id, p]))

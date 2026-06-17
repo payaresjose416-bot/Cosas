@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { PRODUCTS, PRODUCT_MAP } from '../utils/products.js'
 
 const KEYS = {
   STOCK: 'bodega_stock',
@@ -7,12 +6,12 @@ const KEYS = {
   LAST_DATE: 'bodega_lastDate',
 }
 
-function initStock() {
+function initStock(products) {
   try {
     const stored = localStorage.getItem(KEYS.STOCK)
     if (stored) return JSON.parse(stored)
   } catch {}
-  return Object.fromEntries(PRODUCTS.map(p => [p.id, p.initialStock]))
+  return Object.fromEntries(products.map(p => [p.id, p.initialStock]))
 }
 
 function initHistory() {
@@ -23,9 +22,23 @@ function initHistory() {
   return []
 }
 
-export function useInventory() {
-  const [stock, setStock] = useState(initStock)
+export function useInventory(products, productMap) {
+  const [stock, setStock] = useState(() => initStock(products))
   const [history, setHistory] = useState(initHistory)
+
+  useEffect(() => {
+    setStock(prev => {
+      let changed = false
+      const next = { ...prev }
+      for (const p of products) {
+        if (!(p.id in next)) {
+          next[p.id] = p.initialStock
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [products])
 
   useEffect(() => {
     localStorage.setItem(KEYS.STOCK, JSON.stringify(stock))
@@ -41,13 +54,11 @@ export function useInventory() {
 
       setStock(prevStock => {
         const next = { ...prevStock }
-        // Restore existing day's stock
         if (existing) {
           for (const item of existing.items) {
             next[item.id] = (next[item.id] || 0) + item.qty
           }
         }
-        // Deduct new items
         for (const item of items) {
           next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
         }
@@ -78,7 +89,7 @@ export function useInventory() {
   }, [])
 
   const getDaysRemaining = useCallback((productId, lookback = 7) => {
-    const product = PRODUCT_MAP[productId]
+    const product = productMap[productId]
     if (!product) return 0
 
     const currentStock = stock[productId] ?? product.initialStock
@@ -94,7 +105,7 @@ export function useInventory() {
     }
 
     return product.dailyRate > 0 ? currentStock / product.dailyRate : 999
-  }, [stock, history])
+  }, [stock, history, productMap])
 
   const getStatus = useCallback((productId) => {
     const days = getDaysRemaining(productId)

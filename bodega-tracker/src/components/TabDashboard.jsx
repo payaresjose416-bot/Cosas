@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { PRODUCTS } from '../utils/products.js'
 import { useAI } from '../hooks/useAI.js'
 
-const FILTER_LABELS = { todos: 'Todos', critical: 'Crítico', low: 'Bajo', ok: 'OK' }
+const FILTER_LABELS = { todos: 'Todos', critical: 'Critico', low: 'Bajo', ok: 'OK' }
 
 const STATUS = {
   critical: {
@@ -22,20 +21,19 @@ const STATUS = {
   },
 }
 
-export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast }) {
+export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap }) {
   const [filter, setFilter] = useState('todos')
   const { loading, result, error, analyze } = useAI()
 
   const counts = { critical: 0, low: 0, ok: 0 }
-  for (const p of PRODUCTS) counts[getStatus(p.id)]++
+  for (const p of products) counts[getStatus(p.id)]++
 
   const visibleProducts = filter === 'todos'
-    ? PRODUCTS
-    : PRODUCTS.filter(p => getStatus(p.id) === filter)
+    ? products
+    : products.filter(p => getStatus(p.id) === filter)
 
   return (
     <div className="flex flex-col gap-4 pb-4">
-      {/* Summary cards */}
       <div className="grid grid-cols-3 gap-2">
         {(['critical', 'low', 'ok']).map(key => (
           <button
@@ -56,7 +54,6 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
         ))}
       </div>
 
-      {/* Filter tabs */}
       <div className="flex gap-1 bg-surface border border-border rounded-xl p-1">
         {Object.entries(FILTER_LABELS).map(([key, label]) => (
           <button
@@ -72,13 +69,12 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
         ))}
       </div>
 
-      {/* Products table */}
       <div className="bg-surface border border-border rounded-2xl overflow-hidden">
         <div className="grid grid-cols-[1fr_4rem_4rem] text-[11px] font-mono text-text-muted
           border-b border-border px-3 py-2 uppercase tracking-wider">
           <span>Producto</span>
           <span className="text-right">Stock</span>
-          <span className="text-right">Días</span>
+          <span className="text-right">Dias</span>
         </div>
 
         {visibleProducts.length === 0 && (
@@ -117,9 +113,8 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
         })}
       </div>
 
-      {/* AI analysis */}
       <button
-        onClick={() => analyze({ stock, history, getDaysRemaining })}
+        onClick={() => analyze({ stock, history, getDaysRemaining, products })}
         disabled={loading}
         className="w-full py-3.5 bg-accent-blue/10 border border-accent-blue/30
           rounded-2xl text-accent-blue font-ui font-semibold text-sm
@@ -133,7 +128,7 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
               </svg>
               Analizando...
             </span>
-          : 'Analizar con Claude ✦'
+          : 'Analizar con Claude'
         }
       </button>
 
@@ -147,7 +142,7 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
       {result && (
         <div className="bg-surface border border-accent-blue/20 rounded-2xl p-4 animate-fade-in">
           <p className="text-accent-blue font-bold text-[11px] font-mono uppercase tracking-widest mb-3">
-            ✦ Análisis Claude
+            Analisis Claude
           </p>
           <div className="text-text-primary text-sm font-ui leading-relaxed whitespace-pre-wrap">
             {result}

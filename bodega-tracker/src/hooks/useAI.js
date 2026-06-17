@@ -1,12 +1,11 @@
 import { useState, useCallback } from 'react'
-import { PRODUCTS } from '../utils/products.js'
 
 export function useAI() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
 
-  const analyze = useCallback(async ({ stock, history, getDaysRemaining }) => {
+  const analyze = useCallback(async ({ stock, history, getDaysRemaining, products }) => {
     setLoading(true)
     setError(null)
     setResult(null)
@@ -18,7 +17,7 @@ export function useAI() {
       return
     }
 
-    const inventorySummary = PRODUCTS.map(p => ({
+    const inventorySummary = products.map(p => ({
       nombre: p.name,
       unidad: p.unit,
       stock: +(stock[p.id] ?? p.initialStock).toFixed(2),
@@ -28,7 +27,7 @@ export function useAI() {
     const recentHistory = history.slice(-7).map(h => ({
       fecha: h.date,
       items: h.items.map(i => ({
-        producto: PRODUCTS.find(p => p.id === i.id)?.name ?? i.id,
+        producto: products.find(p => p.id === i.id)?.name ?? i.id,
         cantidad: i.qty,
       })),
     }))

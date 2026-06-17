@@ -1,9 +1,8 @@
 import { useState, useMemo, useCallback } from 'react'
 import ProductCard from './ProductCard.jsx'
 import { parseInput } from '../utils/parser.js'
-import { PRODUCTS, PRODUCT_MAP } from '../utils/products.js'
 
-export default function TabRegistro({ stock, saveDay, onToast }) {
+export default function TabRegistro({ stock, saveDay, onToast, products, productMap }) {
   const today = new Date().toISOString().slice(0, 10)
   const [date, setDate] = useState(today)
   const [rawInput, setRawInput] = useState('')
@@ -14,7 +13,7 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
   const handleParse = () => {
     const trimmed = rawInput.trim()
     if (!trimmed) return
-    const parsed = parseInput(trimmed)
+    const parsed = parseInput(trimmed, products)
     if (parsed.length === 0) {
       onToast('No se reconocieron productos', 'warn')
       return
@@ -48,12 +47,12 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
 
   const filteredProducts = useMemo(() => {
     const q = search.toLowerCase()
-    if (!q) return PRODUCTS
-    return PRODUCTS.filter(p =>
+    if (!q) return products
+    return products.filter(p =>
       p.name.toLowerCase().includes(q) ||
       p.keywords.some(k => k.includes(q))
     )
-  }, [search])
+  }, [search, products])
 
   const handleSave = () => {
     if (activeItems.length === 0) {
@@ -64,7 +63,7 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
     saveDay(date, items)
     setQuantities({})
     setShowPreview(false)
-    onToast(`Registro ${date} guardado ✓`, 'success')
+    onToast(`Registro ${date} guardado`, 'success')
   }
 
   const handleClear = () => {
@@ -75,7 +74,6 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
 
   return (
     <div className="flex flex-col gap-3 pb-28">
-      {/* Date selector */}
       <div className="flex gap-2">
         <input
           type="date"
@@ -95,7 +93,6 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
         </button>
       </div>
 
-      {/* Natural language input */}
       <div className="flex gap-2">
         <input
           type="text"
@@ -117,7 +114,6 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
         </button>
       </div>
 
-      {/* Search */}
       <input
         type="text"
         value={search}
@@ -128,11 +124,11 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
           focus:outline-none focus:border-accent-blue transition-colors"
       />
 
-      {/* Product grid */}
       <div className="grid grid-cols-2 gap-2">
         {filteredProducts.map(p => (
           <ProductCard
             key={p.id}
+            product={p}
             productId={p.id}
             qty={quantities[p.id] || 0}
             onIncrement={increment}
@@ -141,7 +137,6 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
         ))}
       </div>
 
-      {/* Bottom action bar */}
       {activeItems.length > 0 && (
         <div className="fixed bottom-16 left-0 right-0 max-w-md mx-auto px-4 pb-2 z-20">
           <div className="bg-bg/95 backdrop-blur-md border border-border rounded-2xl p-3 shadow-xl">
@@ -159,8 +154,8 @@ export default function TabRegistro({ stock, saveDay, onToast }) {
               <div className="mt-2 space-y-1 animate-fade-in">
                 {activeItems.map(([id, qty]) => (
                   <div key={id} className="flex justify-between items-center text-sm px-1">
-                    <span className="text-text-muted font-ui">{PRODUCT_MAP[id]?.name}</span>
-                    <span className="font-mono text-accent-green tabular-nums">{qty} {PRODUCT_MAP[id]?.unit}</span>
+                    <span className="text-text-muted font-ui">{productMap[id]?.name}</span>
+                    <span className="font-mono text-accent-green tabular-nums">{qty} {productMap[id]?.unit}</span>
                   </div>
                 ))}
                 <div className="flex gap-2 mt-2 pt-2 border-t border-border">
