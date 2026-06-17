@@ -1,20 +1,58 @@
 import * as XLSX from 'xlsx'
-import { PRODUCT_ORDER } from './products.js'
+import { PRODUCTS } from './products.js'
 
 const SHEET_NAME = 'Matriz de Consumo (2)'
 
+function normalize(str) {
+  return String(str)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Convert an Excel serial date number to 'YYYY-MM-DD'
+function serialToISO(serial) {
+  const date = XLSX.SSF.parse_date_code(serial)
+  if (!date) return null
+  const y = date.y
+  const m = String(date.m).padStart(2, '0')
+  const d = String(date.d).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// Match an Excel cell name (column B) to a product from the app
+function matchProduct(excelName) {
+  const norm = normalize(excelName)
+  if (!norm) return null
+
+  let bestMatch = null
+  let bestLen = 0
+
+  for (const product of PRODUCTS) {
+    for (const eName of (product.excelNames || [])) {
+      const normE = normalize(eName)
+      if (norm.includes(normE) && normE.length > bestLen) {
+        bestMatch = product.id
+        bestLen = normE.length
+      }
+    }
+  }
+
+  return bestMatch
+}
+
 /**
- * Write consumption data into the corporate .xlsx template.
- * Columns F→AA (indices 5–26) = days 1–22 of the period.
- * Rows 3–30 = products 1–28.
+ * Read the Excel file, find products by name and dates by header,
+ * write consumption data to the matching cells.
  *
- * @param {ArrayBuffer} fileBuffer  Existing .xlsx file as ArrayBuffer
+ * @param {ArrayBuffer} fileBuffer  The existing .xlsx file
  * @param {Array} history           [{ date: 'YYYY-MM-DD', items: [{id, qty}] }]
- * @param {number} month            1-based month
- * @param {number} year
- * @returns {Uint8Array}            Modified .xlsx bytes for download
+ * @returns {{ bytes: Uint8Array, matched: number, unmatched: string[] }}
  */
-export function writeToExcel(fileBuffer, history, month, year) {
+export function writeToExcel(fileBuffer, history) {
   const workbook = XLSX.read(new Uint8Array(fileBuffer), { type: 'array' })
 
   if (!workbook.SheetNames.includes(SHEET_NAME)) {
@@ -22,39 +60,73 @@ export function writeToExcel(fileBuffer, history, month, year) {
   }
 
   const ws = workbook.Sheets[SHEET_NAME]
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
 
-  // Build dayMap: dayOfMonth → { productId → qty }
-  const dayMap = {}
-  for (const entry of history) {
-    const d = new Date(entry.date + 'T00:00:00')
-    if (d.getMonth() + 1 !== month || d.getFullYear() !== year) continue
-    const day = d.getDate()
-    if (day < 1 || day > 22) continue
-    if (!dayMap[day]) dayMap[day] = {}
-    for (const item of entry.items) {
-      dayMap[day][item.id] = (dayMap[day][item.id] || 0) + item.qty
+  // 1. Read date headers from row 2 (index 1), columns F onward
+  //    Build map: 'YYYY-MM-DD' → column index
+  const dateToCol = {}
+  for (let c = 5; c <= range.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: 1, c })]
+    if (!cell) continue
+    if (typeof cell.v === 'number' && cell.v > 40000) {
+      const iso = serialToISO(cell.v)
+      if (iso) dateToCol[iso] = c
+    } else if (typeof cell.v === 'string') {
+      // Try to parse as date string
+      const match = String(cell.v).match(/(\d{4})-(\d{2})-(\d{2})/)
+      if (match) dateToCol[match[0]] = c
     }
   }
 
-  for (const [day, products] of Object.entries(dayMap)) {
-    const colIndex = parseInt(day) + 4  // day 1 → col 5 = F, day 22 → col 26 = AA
-    const colStr = XLSX.utils.encode_col(colIndex)
+  // 2. Read product names from column B (index 1), rows 3+
+  //    Build map: productId → row index (0-based)
+  const productToRow = {}
+  const unmatched = []
+  for (let r = 2; r <= range.e.r; r++) {
+    const cell = ws[XLSX.utils.encode_cell({ r, c: 1 })]
+    if (!cell || !cell.v) continue
+    const productId = matchProduct(cell.v)
+    if (productId) {
+      productToRow[productId] = r
+    }
+  }
+
+  // 3. Build consumption map from history: { date → { productId → qty } }
+  const consumptionMap = {}
+  for (const entry of history) {
+    if (!dateToCol[entry.date]) continue
+    if (!consumptionMap[entry.date]) consumptionMap[entry.date] = {}
+    for (const item of entry.items) {
+      consumptionMap[entry.date][item.id] =
+        (consumptionMap[entry.date][item.id] || 0) + item.qty
+    }
+  }
+
+  // 4. Write to cells
+  let matched = 0
+  for (const [date, products] of Object.entries(consumptionMap)) {
+    const col = dateToCol[date]
+    if (col === undefined) continue
 
     for (const [productId, qty] of Object.entries(products)) {
-      const rowIndex = PRODUCT_ORDER.indexOf(productId)
-      if (rowIndex === -1) continue
-      const rowNumber = rowIndex + 3  // product 0 → row 3 (1-based)
-      const cellAddr = `${colStr}${rowNumber}`
+      const row = productToRow[productId]
+      if (row === undefined) {
+        const pName = PRODUCTS.find(p => p.id === productId)?.name || productId
+        if (!unmatched.includes(pName)) unmatched.push(pName)
+        continue
+      }
 
-      if (!ws[cellAddr]) ws[cellAddr] = {}
-      ws[cellAddr].v = qty
-      ws[cellAddr].t = 'n'
-      // Remove any formula so our value persists on open
-      delete ws[cellAddr].f
+      const addr = XLSX.utils.encode_cell({ r: row, c: col })
+      if (!ws[addr]) ws[addr] = {}
+      ws[addr].v = qty
+      ws[addr].t = 'n'
+      delete ws[addr].f
+      matched++
     }
   }
 
-  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  return { bytes, matched, unmatched }
 }
 
 /**
@@ -72,8 +144,9 @@ export function generateTSV(history, products) {
       const item = entry?.items.find(i => i.id === p.id)
       return item ? item.qty : 0
     })
+    if (cols.every(v => v === 0)) return null
     return [p.name, ...cols].join('\t')
-  })
+  }).filter(Boolean)
 
   return [header, ...rows].join('\n')
 }

@@ -13,6 +13,7 @@ export default function TabExportar({ history, stock, onToast }) {
   const [year, setYear] = useState(now.getFullYear())
   const [excelBuffer, setExcelBuffer] = useState(null)
   const [fileName, setFileName] = useState('')
+  const [exportResult, setExportResult] = useState(null)
   const fileRef = useRef()
 
   const filteredHistory = history.filter(h => {
@@ -26,9 +27,9 @@ export default function TabExportar({ history, stock, onToast }) {
     if (!tsvText) { onToast('Sin datos para copiar', 'warn'); return }
     try {
       await navigator.clipboard.writeText(tsvText)
-      onToast('Copiado al portapapeles ✓', 'success')
+      onToast('Copiado al portapapeles', 'success')
     } catch {
-      onToast('Error al copiar — selecciona el texto manualmente', 'error')
+      onToast('Error al copiar', 'error')
     }
   }
 
@@ -39,28 +40,30 @@ export default function TabExportar({ history, stock, onToast }) {
     reader.onload = ev => {
       setExcelBuffer(ev.target.result)
       setFileName(file.name)
+      setExportResult(null)
       onToast(`Archivo cargado: ${file.name}`, 'info')
     }
     reader.readAsArrayBuffer(file)
-    // Reset input so same file can be re-selected
     e.target.value = ''
   }
 
   const handleExport = () => {
     if (!excelBuffer) { onToast('Carga el archivo .xlsx primero', 'warn'); return }
-    if (filteredHistory.length === 0) { onToast('Sin registros para este periodo', 'warn'); return }
+    if (history.length === 0) { onToast('Sin registros guardados', 'warn'); return }
     try {
-      const result = writeToExcel(excelBuffer, filteredHistory, month, year)
-      const blob = new Blob([result], {
+      const { bytes, matched, unmatched } = writeToExcel(excelBuffer, history)
+      const blob = new Blob([bytes], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `bodega_${year}_${String(month).padStart(2, '0')}.xlsx`
+      a.download = fileName.replace('.xlsx', '_actualizado.xlsx')
       a.click()
       URL.revokeObjectURL(url)
-      onToast('Excel exportado ✓', 'success')
+
+      setExportResult({ matched, unmatched })
+      onToast(`Excel exportado — ${matched} celdas escritas`, 'success')
     } catch (e) {
       onToast(`Error: ${e.message}`, 'error')
     }
@@ -68,7 +71,7 @@ export default function TabExportar({ history, stock, onToast }) {
 
   return (
     <div className="flex flex-col gap-4 pb-4">
-      {/* Period selector */}
+      {/* Period selector (for TSV) */}
       <div className="flex gap-2">
         <select
           value={month}
@@ -131,8 +134,8 @@ export default function TabExportar({ history, stock, onToast }) {
             Exportar al Excel corporativo
           </p>
           <p className="text-text-muted text-xs font-ui mt-1 leading-relaxed">
-            Escribe en la hoja <span className="text-text-primary font-mono text-[11px]">Matriz de Consumo (2)</span>,
-            columnas F–AA (días 1–22), filas 3–30.
+            Sube tu Excel de control de inventario. La app busca los productos por nombre
+            y las fechas por encabezado — no importa si cambiaste el orden de las filas.
           </p>
         </div>
 
@@ -145,7 +148,7 @@ export default function TabExportar({ history, stock, onToast }) {
               : 'border-border text-text-muted active:border-accent-green active:text-accent-green'}`}
         >
           {excelBuffer
-            ? `✓ ${fileName} — cambiar`
+            ? `${fileName} — cambiar`
             : 'Seleccionar archivo .xlsx'}
         </button>
         <input
@@ -158,13 +161,36 @@ export default function TabExportar({ history, stock, onToast }) {
 
         <button
           onClick={handleExport}
-          disabled={!excelBuffer || filteredHistory.length === 0}
+          disabled={!excelBuffer || history.length === 0}
           className="w-full py-3.5 bg-accent-green text-bg font-ui font-bold
             rounded-xl text-sm tracking-wide
             disabled:opacity-30 active:opacity-90 transition-opacity"
         >
           Descargar Excel actualizado
         </button>
+
+        {/* Export feedback */}
+        {exportResult && (
+          <div className="bg-surface border border-border rounded-xl p-3 animate-fade-in">
+            <p className="text-sm font-ui text-accent-green font-semibold">
+              {exportResult.matched} celdas escritas correctamente
+            </p>
+            {exportResult.unmatched.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-accent-warn font-ui">
+                  Productos no encontrados en el Excel:
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {exportResult.unmatched.map(name => (
+                    <li key={name} className="text-xs text-text-muted font-mono">
+                      — {name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
