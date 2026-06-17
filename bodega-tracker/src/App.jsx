@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useProducts } from './hooks/useProducts.js'
 import { useInventory } from './hooks/useInventory.js'
 import TabRegistro from './components/TabRegistro.jsx'
 import TabDashboard from './components/TabDashboard.jsx'
@@ -38,22 +39,22 @@ const TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState('registro')
   const [toast, setToast] = useState(null)
-  const inventory = useInventory()
+  const { products, productMap, addProducts } = useProducts()
+  const inventory = useInventory(products, productMap)
 
   const onToast = (message, type = 'success') => {
     setToast({ message, type, key: Date.now() })
   }
 
   const TAB_CONTENT = {
-    registro:  <TabRegistro  {...inventory} onToast={onToast} />,
-    dashboard: <TabDashboard {...inventory} onToast={onToast} />,
-    historial: <TabHistorial {...inventory} onToast={onToast} />,
-    exportar:  <TabExportar  {...inventory} onToast={onToast} />,
+    registro:  <TabRegistro  {...inventory} products={products} productMap={productMap} onToast={onToast} />,
+    dashboard: <TabDashboard {...inventory} products={products} productMap={productMap} onToast={onToast} />,
+    historial: <TabHistorial {...inventory} productMap={productMap} onToast={onToast} />,
+    exportar:  <TabExportar  {...inventory} products={products} addProducts={addProducts} onToast={onToast} />,
   }
 
   return (
     <div className="min-h-screen bg-bg flex flex-col max-w-md mx-auto">
-      {/* Header */}
       <header className="sticky top-0 z-10 bg-bg/90 backdrop-blur-md border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
@@ -71,12 +72,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* Content */}
       <main className="flex-1 overflow-y-auto px-4 pt-4">
         {TAB_CONTENT[activeTab]}
       </main>
 
-      {/* Bottom tab bar */}
       <nav className="sticky bottom-0 z-10 bg-bg/95 backdrop-blur-md border-t border-border px-2 pb-safe pt-1">
         <div className="flex">
           {TABS.map(tab => {
@@ -96,7 +95,6 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Toast notification */}
       {toast && (
         <Toast
           key={toast.key}

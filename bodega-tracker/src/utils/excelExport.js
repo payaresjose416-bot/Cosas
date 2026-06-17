@@ -1,9 +1,8 @@
 import * as XLSX from 'xlsx'
-import { PRODUCTS } from './products.js'
 
 const SHEET_NAME = 'Matriz de Consumo (2)'
 
-function normalize(str) {
+export function normalize(str) {
   return String(str)
     .toLowerCase()
     .normalize('NFD')
@@ -13,7 +12,6 @@ function normalize(str) {
     .trim()
 }
 
-// Convert an Excel serial date number to 'YYYY-MM-DD'
 function serialToISO(serial) {
   const date = XLSX.SSF.parse_date_code(serial)
   if (!date) return null
@@ -23,15 +21,14 @@ function serialToISO(serial) {
   return `${y}-${m}-${d}`
 }
 
-// Match an Excel cell name (column B) to a product from the app
-function matchProduct(excelName) {
+export function matchProduct(excelName, products) {
   const norm = normalize(excelName)
   if (!norm) return null
 
   let bestMatch = null
   let bestLen = 0
 
-  for (const product of PRODUCTS) {
+  for (const product of products) {
     for (const eName of (product.excelNames || [])) {
       const normE = normalize(eName)
       if (norm.includes(normE) && normE.length > bestLen) {
@@ -44,15 +41,7 @@ function matchProduct(excelName) {
   return bestMatch
 }
 
-/**
- * Read the Excel file, find products by name and dates by header,
- * write consumption data to the matching cells.
- *
- * @param {ArrayBuffer} fileBuffer  The existing .xlsx file
- * @param {Array} history           [{ date: 'YYYY-MM-DD', items: [{id, qty}] }]
- * @returns {{ bytes: Uint8Array, matched: number, unmatched: string[] }}
- */
-export function writeToExcel(fileBuffer, history) {
+export function writeToExcel(fileBuffer, history, products) {
   const workbook = XLSX.read(new Uint8Array(fileBuffer), { type: 'array' })
 
   if (!workbook.SheetNames.includes(SHEET_NAME)) {
@@ -62,8 +51,6 @@ export function writeToExcel(fileBuffer, history) {
   const ws = workbook.Sheets[SHEET_NAME]
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
 
-  // 1. Read date headers from row 2 (index 1), columns F onward
-  //    Build map: 'YYYY-MM-DD' → column index
   const dateToCol = {}
   for (let c = 5; c <= range.e.c; c++) {
     const cell = ws[XLSX.utils.encode_cell({ r: 1, c })]
@@ -72,26 +59,22 @@ export function writeToExcel(fileBuffer, history) {
       const iso = serialToISO(cell.v)
       if (iso) dateToCol[iso] = c
     } else if (typeof cell.v === 'string') {
-      // Try to parse as date string
       const match = String(cell.v).match(/(\d{4})-(\d{2})-(\d{2})/)
       if (match) dateToCol[match[0]] = c
     }
   }
 
-  // 2. Read product names from column B (index 1), rows 3+
-  //    Build map: productId → row index (0-based)
   const productToRow = {}
   const unmatched = []
   for (let r = 2; r <= range.e.r; r++) {
     const cell = ws[XLSX.utils.encode_cell({ r, c: 1 })]
     if (!cell || !cell.v) continue
-    const productId = matchProduct(cell.v)
+    const productId = matchProduct(cell.v, products)
     if (productId) {
       productToRow[productId] = r
     }
   }
 
-  // 3. Build consumption map from history: { date → { productId → qty } }
   const consumptionMap = {}
   for (const entry of history) {
     if (!dateToCol[entry.date]) continue
@@ -102,16 +85,15 @@ export function writeToExcel(fileBuffer, history) {
     }
   }
 
-  // 4. Write to cells
   let matched = 0
-  for (const [date, products] of Object.entries(consumptionMap)) {
+  for (const [date, prods] of Object.entries(consumptionMap)) {
     const col = dateToCol[date]
     if (col === undefined) continue
 
-    for (const [productId, qty] of Object.entries(products)) {
+    for (const [productId, qty] of Object.entries(prods)) {
       const row = productToRow[productId]
       if (row === undefined) {
-        const pName = PRODUCTS.find(p => p.id === productId)?.name || productId
+        const pName = products.find(p => p.id === productId)?.name || productId
         if (!unmatched.includes(pName)) unmatched.push(pName)
         continue
       }
@@ -129,9 +111,6 @@ export function writeToExcel(fileBuffer, history) {
   return { bytes, matched, unmatched }
 }
 
-/**
- * Generate TSV text (rows = products, columns = dates).
- */
 export function generateTSV(history, products) {
   if (!history.length) return ''
 

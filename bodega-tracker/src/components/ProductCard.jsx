@@ -1,7 +1,4 @@
-import { PRODUCT_MAP } from '../utils/products.js'
-
-export default function ProductCard({ productId, qty, onIncrement, onDecrement }) {
-  const product = PRODUCT_MAP[productId]
+export default function ProductCard({ product, productId, qty, onIncrement, onDecrement }) {
   if (!product) return null
 
   const isCafe = product.category === 'cafeteria'
@@ -9,6 +6,7 @@ export default function ProductCard({ productId, qty, onIncrement, onDecrement }
   const badgeBg = isCafe
     ? 'bg-accent-warn/10 border-accent-warn/25 text-accent-warn'
     : 'bg-accent-blue/10 border-accent-blue/25 text-accent-blue'
+  const badgeText = isCafe ? 'CAF' : 'ASEO'
   const active = qty > 0
 
   return (
@@ -22,7 +20,7 @@ export default function ProductCard({ productId, qty, onIncrement, onDecrement }
           {product.name}
         </p>
         <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-md border font-mono font-bold ${badgeBg}`}>
-          {isCafe ? 'CAF' : 'ASEO'}
+          {badgeText}
         </span>
       </div>
 

@@ -1,19 +1,21 @@
 import { useState, useRef } from 'react'
 import { writeToExcel, generateTSV } from '../utils/excelExport.js'
-import { PRODUCTS } from '../utils/products.js'
+import { detectNewProducts } from '../utils/excelDetect.js'
 
 const MONTHS_ES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
-export default function TabExportar({ history, stock, onToast }) {
+export default function TabExportar({ history, stock, onToast, products, addProducts }) {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [excelBuffer, setExcelBuffer] = useState(null)
   const [fileName, setFileName] = useState('')
   const [exportResult, setExportResult] = useState(null)
+  const [detectedProducts, setDetectedProducts] = useState([])
+  const [selectedNew, setSelectedNew] = useState(new Set())
   const fileRef = useRef()
 
   const filteredHistory = history.filter(h => {
@@ -21,7 +23,7 @@ export default function TabExportar({ history, stock, onToast }) {
     return d.getMonth() + 1 === month && d.getFullYear() === year
   })
 
-  const tsvText = generateTSV(filteredHistory, PRODUCTS)
+  const tsvText = generateTSV(filteredHistory, products)
 
   const handleCopy = async () => {
     if (!tsvText) { onToast('Sin datos para copiar', 'warn'); return }
@@ -38,20 +40,58 @@ export default function TabExportar({ history, stock, onToast }) {
     if (!file) return
     const reader = new FileReader()
     reader.onload = ev => {
-      setExcelBuffer(ev.target.result)
+      const buffer = ev.target.result
+      setExcelBuffer(buffer)
       setFileName(file.name)
       setExportResult(null)
       onToast(`Archivo cargado: ${file.name}`, 'info')
+
+      try {
+        const newNames = detectNewProducts(buffer, products)
+        if (newNames.length > 0) {
+          setDetectedProducts(newNames)
+          setSelectedNew(new Set(newNames))
+        } else {
+          setDetectedProducts([])
+          setSelectedNew(new Set())
+        }
+      } catch {
+        setDetectedProducts([])
+        setSelectedNew(new Set())
+      }
     }
     reader.readAsArrayBuffer(file)
     e.target.value = ''
+  }
+
+  const handleAddProducts = () => {
+    const toAdd = detectedProducts.filter(name => selectedNew.has(name))
+    if (toAdd.length === 0) return
+    addProducts(toAdd)
+    onToast(`${toAdd.length} producto(s) agregado(s)`, 'success')
+    setDetectedProducts([])
+    setSelectedNew(new Set())
+  }
+
+  const handleDismissDetected = () => {
+    setDetectedProducts([])
+    setSelectedNew(new Set())
+  }
+
+  const toggleSelected = (name) => {
+    setSelectedNew(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
   }
 
   const handleExport = () => {
     if (!excelBuffer) { onToast('Carga el archivo .xlsx primero', 'warn'); return }
     if (history.length === 0) { onToast('Sin registros guardados', 'warn'); return }
     try {
-      const { bytes, matched, unmatched } = writeToExcel(excelBuffer, history)
+      const { bytes, matched, unmatched } = writeToExcel(excelBuffer, history, products)
       const blob = new Blob([bytes], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
@@ -98,7 +138,7 @@ export default function TabExportar({ history, stock, onToast }) {
       <div className="flex gap-2">
         <div className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-center">
           <p className="text-xl font-mono font-bold text-accent-green">{filteredHistory.length}</p>
-          <p className="text-xs text-text-muted font-ui">días registrados</p>
+          <p className="text-xs text-text-muted font-ui">dias registrados</p>
         </div>
         <div className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-center">
           <p className="text-xl font-mono font-bold text-accent-blue">
@@ -158,6 +198,48 @@ export default function TabExportar({ history, stock, onToast }) {
           onChange={handleFileUpload}
           className="hidden"
         />
+
+        {/* Detected new products panel */}
+        {detectedProducts.length > 0 && (
+          <div className="bg-accent-blue/5 border border-accent-blue/30 rounded-xl p-3 animate-fade-in">
+            <p className="text-sm font-ui font-bold text-accent-blue">
+              {detectedProducts.length} producto(s) nuevo(s) detectado(s)
+            </p>
+            <p className="text-xs text-text-muted font-ui mt-1">
+              Estos productos estan en tu Excel pero no en la app. Selecciona los que quieras agregar.
+            </p>
+            <div className="mt-2 space-y-1.5">
+              {detectedProducts.map(name => (
+                <label key={name} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedNew.has(name)}
+                    onChange={() => toggleSelected(name)}
+                    className="w-4 h-4 rounded border-border accent-accent-green"
+                  />
+                  <span className="text-sm font-mono text-text-primary">{name}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleAddProducts}
+                disabled={selectedNew.size === 0}
+                className="flex-1 py-2 bg-accent-blue text-bg font-ui font-bold
+                  rounded-lg text-sm disabled:opacity-30 active:opacity-90 transition-opacity"
+              >
+                Agregar seleccionados
+              </button>
+              <button
+                onClick={handleDismissDetected}
+                className="px-4 py-2 text-text-muted font-ui text-sm
+                  active:text-text-primary transition-colors"
+              >
+                Ignorar
+              </button>
+            </div>
+          </div>
+        )}
 
         <button
           onClick={handleExport}

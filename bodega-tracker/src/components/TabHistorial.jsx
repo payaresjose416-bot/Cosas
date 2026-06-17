@@ -1,5 +1,3 @@
-import { PRODUCT_MAP } from '../utils/products.js'
-
 const MONTHS_ES = [
   'ene','feb','mar','abr','may','jun',
   'jul','ago','sep','oct','nov','dic',
@@ -10,11 +8,11 @@ function formatDate(iso) {
   return `${parseInt(d)} ${MONTHS_ES[parseInt(m) - 1]} ${y}`
 }
 
-export default function TabHistorial({ history, deleteDay, onToast }) {
+export default function TabHistorial({ history, deleteDay, onToast, productMap }) {
   const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date))
 
   const handleDelete = (date) => {
-    if (window.confirm(`¿Eliminar el registro de ${formatDate(date)}?`)) {
+    if (window.confirm(`Eliminar el registro de ${formatDate(date)}?`)) {
       deleteDay(date)
       onToast(`Registro ${formatDate(date)} eliminado`, 'warn')
     }
@@ -24,9 +22,9 @@ export default function TabHistorial({ history, deleteDay, onToast }) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-2">
         <span className="text-4xl">📦</span>
-        <p className="text-text-muted font-ui text-sm">Sin registros todavía</p>
+        <p className="text-text-muted font-ui text-sm">Sin registros todavia</p>
         <p className="text-text-muted font-ui text-xs">
-          Usa la pestaña Registro para agregar el consumo diario
+          Usa la pestana Registro para agregar el consumo diario
         </p>
       </div>
     )
@@ -36,11 +34,10 @@ export default function TabHistorial({ history, deleteDay, onToast }) {
 
   return (
     <div className="flex flex-col gap-3 pb-4">
-      {/* Summary */}
       <div className="flex gap-2">
         <div className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-center">
           <p className="text-2xl font-mono font-bold text-accent-green">{sorted.length}</p>
-          <p className="text-xs text-text-muted font-ui">días</p>
+          <p className="text-xs text-text-muted font-ui">dias</p>
         </div>
         <div className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-center">
           <p className="text-2xl font-mono font-bold text-accent-blue">{totalItems}</p>
@@ -48,7 +45,6 @@ export default function TabHistorial({ history, deleteDay, onToast }) {
         </div>
       </div>
 
-      {/* Entries */}
       {sorted.map(entry => (
         <div key={entry.date}
           className="bg-surface border border-border rounded-2xl overflow-hidden animate-fade-in"
@@ -71,7 +67,7 @@ export default function TabHistorial({ history, deleteDay, onToast }) {
           </div>
           <div className="px-3 py-2 space-y-1.5">
             {entry.items.map(item => {
-              const product = PRODUCT_MAP[item.id]
+              const product = productMap[item.id]
               return (
                 <div key={item.id} className="flex justify-between items-center text-sm">
                   <span className="text-text-muted font-ui">
