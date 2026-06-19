@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useAI } from '../hooks/useAI.js'
 
 const FILTER_LABELS = { todos: 'Todos', critical: 'Critico', low: 'Bajo', ok: 'OK' }
+const STATUS_LABEL = { critical: 'CRITICO', low: 'BAJO', ok: 'OK' }
+const MONTHS_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
 
 const STATUS = {
   critical: {
@@ -31,6 +33,49 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
   const visibleProducts = filter === 'todos'
     ? products
     : products.filter(p => getStatus(p.id) === filter)
+
+  const handleDownloadStock = () => {
+    const now = new Date()
+    const dateStr = `${now.getDate()} ${MONTHS_ES[now.getMonth()]} ${now.getFullYear()}`
+    const iso = now.toISOString().slice(0, 10)
+
+    const cafeteria = products.filter(p => p.category === 'cafeteria')
+    const aseo = products.filter(p => p.category !== 'cafeteria')
+
+    const formatSection = (title, items) => {
+      if (items.length === 0) return ''
+      const lines = items.map(p => {
+        const qty = stock[p.id] ?? p.initialStock
+        const qtyStr = qty % 1 === 0 ? String(qty) : qty.toFixed(1)
+        const status = STATUS_LABEL[getStatus(p.id)]
+        return `  ${p.name.padEnd(30)} ${qtyStr.padStart(6)} ${p.unit.padEnd(10)} [${status}]`
+      })
+      return `${title}\n${lines.join('\n')}`
+    }
+
+    const totalProducts = products.length
+    const text = [
+      'STOCK ACTUAL — Bodega Tracker',
+      `Fecha: ${dateStr}`,
+      '─'.repeat(50),
+      '',
+      formatSection('CAFETERIA', cafeteria),
+      '',
+      formatSection('ASEO', aseo),
+      '',
+      '─'.repeat(50),
+      `Total productos: ${totalProducts}`,
+    ].join('\n')
+
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `stock_${iso}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+    onToast('Stock descargado como .txt', 'success')
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-4">
@@ -112,6 +157,15 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
           )
         })}
       </div>
+
+      <button
+        onClick={handleDownloadStock}
+        className="w-full py-3.5 bg-accent-green/10 border border-accent-green/30
+          rounded-2xl text-accent-green font-ui font-semibold text-sm
+          active:bg-accent-green/20 transition-colors"
+      >
+        Descargar stock (.txt)
+      </button>
 
       <button
         onClick={() => analyze({ stock, history, getDaysRemaining, products })}
