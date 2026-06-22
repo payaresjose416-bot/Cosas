@@ -1,16 +1,25 @@
 import { useState, useEffect, useCallback } from 'react'
+import { STOCK_VERSION } from '../utils/products.js'
 
 const KEYS = {
   STOCK: 'bodega_stock',
   HISTORY: 'bodega_history',
   LAST_DATE: 'bodega_lastDate',
+  STOCK_VERSION: 'bodega_stock_version',
 }
 
 function initStock(products) {
   try {
+    const savedVersion = Number(localStorage.getItem(KEYS.STOCK_VERSION) || 0)
+    if (savedVersion < STOCK_VERSION) {
+      localStorage.removeItem(KEYS.STOCK)
+      localStorage.setItem(KEYS.STOCK_VERSION, String(STOCK_VERSION))
+      return Object.fromEntries(products.map(p => [p.id, p.initialStock]))
+    }
     const stored = localStorage.getItem(KEYS.STOCK)
     if (stored) return JSON.parse(stored)
   } catch {}
+  localStorage.setItem(KEYS.STOCK_VERSION, String(STOCK_VERSION))
   return Object.fromEntries(products.map(p => [p.id, p.initialStock]))
 }
 
