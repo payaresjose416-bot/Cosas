@@ -1,6 +1,6 @@
 // Productos reales de Inversiones en Salud - Coosalud Inversa S.A.
 // excelNames: variantes del nombre que aparecen en la columna B del Excel corporativo
-export const STOCK_VERSION = 2
+export const STOCK_VERSION = 3
 
 export const PRODUCTS = [
   {
@@ -60,7 +60,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['canequer', 'verde', 'canequera', 'bolsa canequer'],
     excelNames: ['canequer'],
-    initialStock: 1.92,
+    initialStock: 0,
     dailyRate: 0.0333,
   },
   {
@@ -80,7 +80,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['desinfectante', 'limpiapiso', 'relajante', 'desinfect'],
     excelNames: ['desinfectante limpiapiso', 'desinfectante relajante'],
-    initialStock: 3,
+    initialStock: 0,
     dailyRate: 0.1667,
   },
   {
@@ -110,7 +110,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['esponja acero', 'brillo', 'acero'],
     excelNames: ['esponja de acero', 'esponja acero', 'brillo)'],
-    initialStock: 11,
+    initialStock: 7,
     dailyRate: 0,
   },
   {
@@ -140,7 +140,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['lavaloza 450', 'axion 450', '450'],
     excelNames: ['lavaloza crema axion x 450', 'lavaloza crema axion x450', 'axion x 450', 'axion x450'],
-    initialStock: 1,
+    initialStock: 0,
     dailyRate: 0.25,
   },
   {
@@ -180,7 +180,7 @@ export const PRODUCTS = [
     category: 'cafeteria',
     keywords: ['azucar', 'azúcar', 'manuelita', 'sobres', 'sugar'],
     excelNames: ['azucar manuelita'],
-    initialStock: 2,
+    initialStock: 0,
     dailyRate: 0.1429,
   },
   {
@@ -220,7 +220,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['tapabocas', 'mascarilla', 'tapa', 'tapaboca'],
     excelNames: ['tapabocas'],
-    initialStock: 2.22,
+    initialStock: 1.5,
     dailyRate: 0.1429,
   },
   {
@@ -230,7 +230,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['limpiavidrios', 'limpia vidrios', 'vidrios', 'ventanas'],
     excelNames: ['limpia vidrios', 'limpiavidrios'],
-    initialStock: 0,
+    initialStock: 0.5,
     dailyRate: 0.0333,
   },
   {
@@ -260,7 +260,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['esponja x12', 'esponjas x12', 'esponjas 12'],
     excelNames: ['esponjas x12'],
-    initialStock: 1,
+    initialStock: 0,
     dailyRate: 0,
   },
   {
@@ -280,7 +280,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['guante manga', 'manga', 'media manga', 'guantes manga'],
     excelNames: ['guantes media manga'],
-    initialStock: 2,
+    initialStock: 1,
     dailyRate: 0.0667,
   },
   {
@@ -290,7 +290,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['cepillo', 'sanitario', 'cepillo sanitario'],
     excelNames: ['cepillo sanitario'],
-    initialStock: 2,
+    initialStock: 0,
     dailyRate: 0,
   },
   {
@@ -300,7 +300,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['escoba', 'cerda', 'escobas'],
     excelNames: ['escoba cerda', 'escoba'],
-    initialStock: 2,
+    initialStock: 0,
     dailyRate: 0,
   },
   {
