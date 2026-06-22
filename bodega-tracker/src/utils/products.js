@@ -1,5 +1,7 @@
 // Productos reales de Inversiones en Salud - Coosalud Inversa S.A.
 // excelNames: variantes del nombre que aparecen en la columna B del Excel corporativo
+export const STOCK_VERSION = 2
+
 export const PRODUCTS = [
   {
     id: 'ambientador',
@@ -8,7 +10,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['ambientador', 'glade', 'aerosol'],
     excelNames: ['ambientador glade'],
-    initialStock: 6,
+    initialStock: 3,
     dailyRate: 0.1111,
   },
   {
@@ -18,7 +20,7 @@ export const PRODUCTS = [
     category: 'cafeteria',
     keywords: ['aromatica', 'manzanilla', 'bamby', 'aromática'],
     excelNames: ['bamby manzani', 'aromatica bamby manzanilla'],
-    initialStock: 4,
+    initialStock: 1,
     dailyRate: 0.1667,
   },
   {
@@ -38,7 +40,7 @@ export const PRODUCTS = [
     category: 'cafeteria',
     keywords: ['aromatica', 'frutos', 'rojos', 'aromática', 'roja'],
     excelNames: ['frutos rojos', 'infusion frutos'],
-    initialStock: 4,
+    initialStock: 1,
     dailyRate: 0.1667,
   },
   {
@@ -48,7 +50,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['bolsa', 'basura', 'negra', 'bolsas', 'negras'],
     excelNames: ['bolsas basura negra', 'basura negra'],
-    initialStock: 30,
+    initialStock: 14,
     dailyRate: 2.0,
   },
   {
@@ -68,7 +70,7 @@ export const PRODUCTS = [
     category: 'cafeteria',
     keywords: ['cafe', 'café', 'sello', 'rojo', 'coffee', 'tinto'],
     excelNames: ['cafe sello rojo', 'sello rojo'],
-    initialStock: 12,
+    initialStock: 8,
     dailyRate: 1.0,
   },
   {
@@ -98,7 +100,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['detergente', 'neutro', 'multi', 'deterge'],
     excelNames: ['detergente multi', 'detergente neutro'],
-    initialStock: 4,
+    initialStock: 2,
     dailyRate: 0.2,
   },
   {
@@ -118,7 +120,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['jabon', 'jabón', 'liquido', 'manos', 'jabón manos'],
     excelNames: ['jabon liquido', 'jabon liquido de manos'],
-    initialStock: 3,
+    initialStock: 2,
     dailyRate: 0.1667,
   },
   {
@@ -128,7 +130,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['lavaloza', 'axion', 'lava', 'loza', 'lavaplatos'],
     excelNames: ['lavaloza crema axion x 800', 'lavaloza crema axion x800', 'axion x 800', 'axion x800'],
-    initialStock: 4,
+    initialStock: 2,
     dailyRate: 0.25,
   },
   {
@@ -146,9 +148,9 @@ export const PRODUCTS = [
     name: 'Paño Micro Vidrios',
     unit: '10 UNID',
     category: 'aseo',
-    keywords: ['paño', 'pano', 'micro', 'vidrio', 'azul', 'microfibra'],
+    keywords: ['paño', 'pano', 'micro', 'vidrio', 'azul', 'microfibra', 'multiusos', 'multiuso'],
     excelNames: ['pano multiuso', 'paño multiuso', 'pano micro'],
-    initialStock: 0.83,
+    initialStock: 2,
     dailyRate: 0.3333,
   },
   {
@@ -158,7 +160,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['papel', 'higienico', 'jumbo', 'pap', 'sanitario', 'papel higiénico', 'pap.hig'],
     excelNames: ['pap.hig', 'pap hig', 'papel higienico jumbo', 'famimax'],
-    initialStock: 44,
+    initialStock: 12,
     dailyRate: 3.0,
   },
   {
@@ -188,7 +190,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['toalla', 'precortada', 'toal', 'fmax', 'papel manos'],
     excelNames: ['toalla precortada'],
-    initialStock: 21,
+    initialStock: 11,
     dailyRate: 2.0,
   },
   {
@@ -196,9 +198,9 @@ export const PRODUCTS = [
     name: 'Repuesto de Trapero',
     unit: 'UNIDAD',
     category: 'aseo',
-    keywords: ['trapero', 'repuesto', 'trapeador', 'mopa'],
+    keywords: ['trapero', 'repuesto', 'trapeador', 'mopa', 'mecha'],
     excelNames: ['repuesto de trapero', 'trapero'],
-    initialStock: 2,
+    initialStock: 1,
     dailyRate: 0.1429,
   },
   {
@@ -208,7 +210,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['guante nitrilo', 'nitrilo', 'nitrile', 'guantes nitrilo'],
     excelNames: ['guantes de nitrilo', 'nitrilo'],
-    initialStock: 2,
+    initialStock: 1,
     dailyRate: 0.1111,
   },
   {
@@ -238,7 +240,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['cloro', 'blanqueador', 'hipoclorito', 'lejia'],
     excelNames: ['blanqueador', 'cloro'],
-    initialStock: 2,
+    initialStock: 1,
     dailyRate: 0.1429,
   },
   {
@@ -258,7 +260,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['esponja x12', 'esponjas x12', 'esponjas 12'],
     excelNames: ['esponjas x12'],
-    initialStock: 0.25,
+    initialStock: 1,
     dailyRate: 0,
   },
   {
@@ -268,7 +270,7 @@ export const PRODUCTS = [
     category: 'aseo',
     keywords: ['esponja x18', 'esponjas x18', 'esponjas 18', 'esponja'],
     excelNames: ['esponjas x18'],
-    initialStock: 0.72,
+    initialStock: 0,
     dailyRate: 0.0139,
   },
   {
