@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { BASE_PRODUCTS } from '../utils/products.js'
+import { useSync } from './useSync.js'
 
 const LS_KEY = 'bodega_custom_products'
 
@@ -22,6 +23,13 @@ function titleCase(str) {
 
 export function useProducts() {
   const [customProducts, setCustomProducts] = useState(loadCustomProducts)
+  const skipSync = useRef(false)
+
+  const syncCustomProducts = useSync('custom_products', customProducts, useCallback((cloudProducts) => {
+    skipSync.current = true
+    setCustomProducts(cloudProducts)
+    localStorage.setItem(LS_KEY, JSON.stringify(cloudProducts))
+  }, []))
 
   const products = useMemo(
     () => [...BASE_PRODUCTS, ...customProducts],
@@ -60,9 +68,10 @@ export function useProducts() {
       if (newProducts.length === 0) return prev
       const updated = [...prev, ...newProducts]
       localStorage.setItem(LS_KEY, JSON.stringify(updated))
+      syncCustomProducts(updated)
       return updated
     })
-  }, [])
+  }, [syncCustomProducts])
 
   return { products, productMap, addProducts }
 }
