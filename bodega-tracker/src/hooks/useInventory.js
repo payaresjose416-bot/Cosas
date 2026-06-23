@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { STOCK_VERSION } from '../utils/products.js'
+import { useSync } from './useSync.js'
 
 const KEYS = {
   STOCK: 'bodega_stock',
@@ -34,6 +35,20 @@ function initHistory() {
 export function useInventory(products, productMap) {
   const [stock, setStock] = useState(() => initStock(products))
   const [history, setHistory] = useState(initHistory)
+  const skipSyncStock = useRef(false)
+  const skipSyncHistory = useRef(false)
+
+  const syncStock = useSync('stock', stock, useCallback((cloudStock) => {
+    skipSyncStock.current = true
+    setStock(cloudStock)
+    localStorage.setItem(KEYS.STOCK, JSON.stringify(cloudStock))
+  }, []))
+
+  const syncHistory = useSync('history', history, useCallback((cloudHistory) => {
+    skipSyncHistory.current = true
+    setHistory(cloudHistory)
+    localStorage.setItem(KEYS.HISTORY, JSON.stringify(cloudHistory))
+  }, []))
 
   useEffect(() => {
     setStock(prev => {
@@ -51,11 +66,15 @@ export function useInventory(products, productMap) {
 
   useEffect(() => {
     localStorage.setItem(KEYS.STOCK, JSON.stringify(stock))
-  }, [stock])
+    if (skipSyncStock.current) { skipSyncStock.current = false; return }
+    syncStock(stock)
+  }, [stock, syncStock])
 
   useEffect(() => {
     localStorage.setItem(KEYS.HISTORY, JSON.stringify(history))
-  }, [history])
+    if (skipSyncHistory.current) { skipSyncHistory.current = false; return }
+    syncHistory(history)
+  }, [history, syncHistory])
 
   const saveDay = useCallback((date, items) => {
     setHistory(prev => {
