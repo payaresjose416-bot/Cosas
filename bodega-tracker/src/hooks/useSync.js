@@ -10,7 +10,9 @@ export function useSync(key, localValue, onCloudUpdate) {
       if (cloudValue == null) return
       const cloudStr = JSON.stringify(cloudValue)
       const localStr = JSON.stringify(localValue)
-      if (cloudStr !== localStr && cloudStr !== '{}' && cloudStr !== '[]') {
+      if (cloudStr === localStr) return
+      if (cloudStr === '{}' || cloudStr === '[]') return
+      if (localStr === '{}' || localStr === '[]') {
         onCloudUpdate(cloudValue)
       }
     })
