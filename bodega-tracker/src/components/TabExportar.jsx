@@ -1,13 +1,14 @@
 import { useState, useRef } from 'react'
 import { writeToExcel, generateTSV } from '../utils/excelExport.js'
 import { detectNewProducts } from '../utils/excelDetect.js'
+import { detectStockSync } from '../utils/excelStockSync.js'
 
 const MONTHS_ES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
-export default function TabExportar({ history, stock, onToast, products, addProducts }) {
+export default function TabExportar({ history, stock, onToast, products, addProducts, applyStockSync }) {
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
@@ -16,6 +17,9 @@ export default function TabExportar({ history, stock, onToast, products, addProd
   const [exportResult, setExportResult] = useState(null)
   const [detectedProducts, setDetectedProducts] = useState([])
   const [selectedNew, setSelectedNew] = useState(new Set())
+  const [stockSyncResult, setStockSyncResult] = useState(null)
+  const [selectedStockChanges, setSelectedStockChanges] = useState(new Set())
+  const [selectedStockNew, setSelectedStockNew] = useState(new Set())
   const fileRef = useRef()
 
   const filteredHistory = history.filter(h => {
@@ -85,6 +89,68 @@ export default function TabExportar({ history, stock, onToast, products, addProd
       else next.add(name)
       return next
     })
+  }
+
+  const handleReviewStockSync = () => {
+    if (!excelBuffer) { onToast('Carga el archivo .xlsx primero', 'warn'); return }
+    try {
+      const result = detectStockSync(excelBuffer, products, stock)
+      if (result.existingChanges.length === 0 && result.newProducts.length === 0) {
+        onToast('No se detectaron cambios de stock', 'info')
+        return
+      }
+      setStockSyncResult(result)
+      setSelectedStockChanges(new Set(result.existingChanges.map(c => c.id)))
+      setSelectedStockNew(new Set(result.newProducts.map(n => n.name)))
+      setDetectedProducts([])
+      setSelectedNew(new Set())
+    } catch (e) {
+      onToast(`Error: ${e.message}`, 'error')
+    }
+  }
+
+  const toggleStockChange = (id) => {
+    setSelectedStockChanges(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleStockNew = (name) => {
+    setSelectedStockNew(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  const handleApplyStockSync = () => {
+    if (!stockSyncResult) return
+    const changesToApply = stockSyncResult.existingChanges.filter(c => selectedStockChanges.has(c.id))
+    const newToAdd = stockSyncResult.newProducts.filter(n => selectedStockNew.has(n.name))
+
+    if (changesToApply.length > 0) {
+      applyStockSync(changesToApply.map(({ id, newStock }) => ({ id, newStock })))
+    }
+    if (newToAdd.length > 0) {
+      addProducts(newToAdd)
+    }
+    onToast(
+      `Stock actualizado: ${changesToApply.length} producto(s), ${newToAdd.length} nuevo(s)`,
+      'success'
+    )
+    setStockSyncResult(null)
+    setSelectedStockChanges(new Set())
+    setSelectedStockNew(new Set())
+  }
+
+  const handleDismissStockSync = () => {
+    setStockSyncResult(null)
+    setSelectedStockChanges(new Set())
+    setSelectedStockNew(new Set())
   }
 
   const handleExport = () => {
@@ -232,6 +298,88 @@ export default function TabExportar({ history, stock, onToast, products, addProd
               </button>
               <button
                 onClick={handleDismissDetected}
+                className="px-4 py-2 text-text-muted font-ui text-sm
+                  active:text-text-primary transition-colors"
+              >
+                Ignorar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sync stock button */}
+        {excelBuffer && (
+          <button
+            onClick={handleReviewStockSync}
+            className="w-full py-2.5 border border-accent-green/40 text-accent-green
+              rounded-xl text-sm font-ui font-semibold active:opacity-80 transition-opacity"
+          >
+            Sincronizar stock desde este Excel
+          </button>
+        )}
+
+        {/* Stock sync review panel */}
+        {stockSyncResult && (
+          <div className="bg-accent-green/5 border border-accent-green/30 rounded-xl p-3 animate-fade-in">
+            <p className="text-sm font-ui font-bold text-accent-green">
+              Revisión de stock — columna "{stockSyncResult.stockColLetter}"
+            </p>
+
+            {stockSyncResult.existingChanges.length > 0 && (
+              <>
+                <p className="text-xs text-text-muted font-ui mt-2 mb-1.5">
+                  Cambios de stock en productos existentes:
+                </p>
+                <div className="space-y-1.5">
+                  {stockSyncResult.existingChanges.map(c => (
+                    <label key={c.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedStockChanges.has(c.id)}
+                        onChange={() => toggleStockChange(c.id)}
+                        className="w-4 h-4 rounded border-border accent-accent-green"
+                      />
+                      <span className="text-sm font-mono text-text-primary flex-1">{c.name}</span>
+                      <span className="text-xs font-mono text-text-muted">{c.oldStock} → {c.newStock}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {stockSyncResult.newProducts.length > 0 && (
+              <>
+                <p className="text-xs text-text-muted font-ui mt-3 mb-1.5">
+                  Productos nuevos (se agregarán con su stock actual):
+                </p>
+                <div className="space-y-1.5">
+                  {stockSyncResult.newProducts.map(n => (
+                    <label key={n.name} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedStockNew.has(n.name)}
+                        onChange={() => toggleStockNew(n.name)}
+                        className="w-4 h-4 rounded border-border accent-accent-blue"
+                      />
+                      <span className="text-sm font-mono text-text-primary flex-1">{n.name}</span>
+                      <span className="text-xs font-mono text-text-muted">stock: {n.stock}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleApplyStockSync}
+                disabled={selectedStockChanges.size === 0 && selectedStockNew.size === 0}
+                className="flex-1 py-2 bg-accent-green text-bg font-ui font-bold
+                  rounded-lg text-sm disabled:opacity-30 active:opacity-90 transition-opacity"
+              >
+                Aplicar cambios de stock
+              </button>
+              <button
+                onClick={handleDismissStockSync}
                 className="px-4 py-2 text-text-muted font-ui text-sm
                   active:text-text-primary transition-colors"
               >

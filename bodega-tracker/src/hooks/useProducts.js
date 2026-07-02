@@ -41,11 +41,13 @@ export function useProducts() {
     [products],
   )
 
-  const addProducts = useCallback((excelNames) => {
+  const addProducts = useCallback((items) => {
     setCustomProducts(prev => {
       const existingIds = new Set([...BASE_PRODUCTS, ...prev].map(p => p.id))
-      const newProducts = excelNames
-        .map(name => {
+      const newProducts = items
+        .map(item => {
+          const name = typeof item === 'string' ? item : item.name
+          const stock = typeof item === 'string' ? 0 : (Number(item.stock) || 0)
           const id = slugify(name)
           if (existingIds.has(id)) return null
           const words = name.toLowerCase()
@@ -58,7 +60,7 @@ export function useProducts() {
             category: 'aseo',
             keywords: words,
             excelNames: [name.toLowerCase().trim()],
-            initialStock: 0,
+            initialStock: stock,
             dailyRate: 0,
             isCustom: true,
           }
