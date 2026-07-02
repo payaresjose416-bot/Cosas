@@ -76,43 +76,46 @@ export function useInventory(products, productMap) {
     syncHistory(history)
   }, [history, syncHistory])
 
-  const saveDay = useCallback((date, items) => {
+  const saveDay = useCallback((date, items, type = 'salida') => {
     setHistory(prev => {
-      const existing = prev.find(h => h.date === date)
+      const existing = prev.find(h => h.date === date && (h.type || 'salida') === type)
 
       setStock(prevStock => {
         const next = { ...prevStock }
         if (existing) {
           for (const item of existing.items) {
-            next[item.id] = (next[item.id] || 0) + item.qty
+            if (type === 'salida') next[item.id] = (next[item.id] || 0) + item.qty
+            else next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
           }
         }
         for (const item of items) {
-          next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
+          if (type === 'salida') next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
+          else next[item.id] = (next[item.id] || 0) + item.qty
         }
         return next
       })
 
-      const filtered = prev.filter(h => h.date !== date)
-      return [...filtered, { date, items }].sort((a, b) => a.date.localeCompare(b.date))
+      const filtered = prev.filter(h => !(h.date === date && (h.type || 'salida') === type))
+      return [...filtered, { date, type, items }].sort((a, b) => a.date.localeCompare(b.date))
     })
 
     localStorage.setItem(KEYS.LAST_DATE, date)
   }, [])
 
-  const deleteDay = useCallback((date) => {
+  const deleteDay = useCallback((date, type = 'salida') => {
     setHistory(prev => {
-      const entry = prev.find(h => h.date === date)
+      const entry = prev.find(h => h.date === date && (h.type || 'salida') === type)
       if (entry) {
         setStock(prevStock => {
           const next = { ...prevStock }
           for (const item of entry.items) {
-            next[item.id] = (next[item.id] || 0) + item.qty
+            if ((entry.type || 'salida') === 'salida') next[item.id] = (next[item.id] || 0) + item.qty
+            else next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
           }
           return next
         })
       }
-      return prev.filter(h => h.date !== date)
+      return prev.filter(h => !(h.date === date && (h.type || 'salida') === type))
     })
   }, [])
 
@@ -122,7 +125,7 @@ export function useInventory(products, productMap) {
 
     const currentStock = stock[productId] ?? product.initialStock
 
-    const recent = history.slice(-lookback)
+    const recent = history.filter(h => (h.type || 'salida') === 'salida').slice(-lookback)
     if (recent.length > 0) {
       const totalConsumed = recent.reduce((sum, entry) => {
         const item = entry.items.find(i => i.id === productId)

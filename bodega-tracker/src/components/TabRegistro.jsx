@@ -1,14 +1,26 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import ProductCard from './ProductCard.jsx'
 import { parseInput } from '../utils/parser.js'
 
-export default function TabRegistro({ stock, saveDay, onToast, products, productMap }) {
+export default function TabRegistro({ stock, saveDay, onToast, products, productMap, editEntry, onEditDone }) {
   const today = new Date().toISOString().slice(0, 10)
   const [date, setDate] = useState(today)
+  const [type, setType] = useState('salida')
   const [rawInput, setRawInput] = useState('')
   const [quantities, setQuantities] = useState({})
   const [search, setSearch] = useState('')
   const [showPreview, setShowPreview] = useState(false)
+
+  useEffect(() => {
+    if (!editEntry) return
+    setDate(editEntry.date)
+    setType(editEntry.type || 'salida')
+    const q = {}
+    for (const { id, qty } of editEntry.items) q[id] = qty
+    setQuantities(q)
+    setShowPreview(false)
+    onEditDone()
+  }, [editEntry])
 
   const handleParse = () => {
     const trimmed = rawInput.trim()
@@ -60,10 +72,10 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
       return
     }
     const items = activeItems.map(([id, qty]) => ({ id, qty }))
-    saveDay(date, items)
+    saveDay(date, items, type)
     setQuantities({})
     setShowPreview(false)
-    onToast(`Registro ${date} guardado`, 'success')
+    onToast(type === 'entrada' ? `Entrada ${date} guardada` : `Registro ${date} guardado`, 'success')
   }
 
   const handleClear = () => {
@@ -72,22 +84,43 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
     onToast('Registro limpiado', 'info')
   }
 
+  const isEntrada = type === 'entrada'
+  const accentColor = isEntrada ? 'accent-blue' : 'accent-green'
+
   return (
     <div className="flex flex-col gap-3 pb-28">
+      {/* Salida / Entrada toggle */}
+      <div className="flex bg-surface border border-border rounded-xl p-0.5">
+        <button
+          onClick={() => setType('salida')}
+          className={`flex-1 py-2 rounded-lg text-sm font-ui font-semibold transition-colors
+            ${!isEntrada ? 'bg-accent-green text-bg' : 'text-text-muted active:text-text-primary'}`}
+        >
+          Salida
+        </button>
+        <button
+          onClick={() => setType('entrada')}
+          className={`flex-1 py-2 rounded-lg text-sm font-ui font-semibold transition-colors
+            ${isEntrada ? 'bg-accent-blue text-bg' : 'text-text-muted active:text-text-primary'}`}
+        >
+          Entrada / Compra
+        </button>
+      </div>
+
       <div className="flex gap-2">
         <input
           type="date"
           value={date}
           onChange={e => setDate(e.target.value)}
-          className="flex-1 bg-surface border border-border rounded-xl px-3 py-2.5
-            text-text-primary font-mono text-sm focus:outline-none focus:border-accent-green
-            transition-colors"
+          className={`flex-1 bg-surface border border-border rounded-xl px-3 py-2.5
+            text-text-primary font-mono text-sm focus:outline-none transition-colors
+            focus:border-${accentColor}`}
         />
         <button
           onClick={() => setDate(today)}
-          className="px-4 py-2.5 bg-surface border border-border rounded-xl
-            text-accent-green font-ui font-semibold text-sm
-            active:bg-accent-green/10 transition-colors"
+          className={`px-4 py-2.5 bg-surface border border-border rounded-xl
+            text-${accentColor} font-ui font-semibold text-sm
+            active:bg-${accentColor}/10 transition-colors`}
         >
           Hoy
         </button>
@@ -142,8 +175,9 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
           <div className="bg-bg/95 backdrop-blur-md border border-border rounded-2xl p-3 shadow-xl">
             <button
               onClick={() => setShowPreview(!showPreview)}
-              className="w-full py-2.5 bg-accent-green text-bg font-ui font-bold
-                rounded-xl text-sm tracking-wide active:opacity-90 transition-opacity"
+              className={`w-full py-2.5 text-bg font-ui font-bold
+                rounded-xl text-sm tracking-wide active:opacity-90 transition-opacity
+                ${isEntrada ? 'bg-accent-blue' : 'bg-accent-green'}`}
             >
               {showPreview
                 ? 'Ocultar resumen'
@@ -155,7 +189,9 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
                 {activeItems.map(([id, qty]) => (
                   <div key={id} className="flex justify-between items-center text-sm px-1">
                     <span className="text-text-muted font-ui">{productMap[id]?.name}</span>
-                    <span className="font-mono text-accent-green tabular-nums">{qty} {productMap[id]?.unit}</span>
+                    <span className={`font-mono tabular-nums ${isEntrada ? 'text-accent-blue' : 'text-accent-green'}`}>
+                      {isEntrada ? '+' : ''}{qty} {productMap[id]?.unit}
+                    </span>
                   </div>
                 ))}
                 <div className="flex gap-2 mt-2 pt-2 border-t border-border">
@@ -168,10 +204,10 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
                   </button>
                   <button
                     onClick={handleSave}
-                    className="flex-2 px-6 py-2 bg-accent-green text-bg
-                      font-ui font-bold rounded-xl text-sm active:opacity-90"
+                    className={`flex-2 px-6 py-2 text-bg font-ui font-bold rounded-xl text-sm active:opacity-90
+                      ${isEntrada ? 'bg-accent-blue' : 'bg-accent-green'}`}
                   >
-                    Guardar
+                    {isEntrada ? 'Guardar entrada' : 'Guardar salida'}
                   </button>
                 </div>
               </div>

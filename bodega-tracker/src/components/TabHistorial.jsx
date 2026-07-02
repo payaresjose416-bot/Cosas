@@ -8,13 +8,17 @@ function formatDate(iso) {
   return `${parseInt(d)} ${MONTHS_ES[parseInt(m) - 1]} ${y}`
 }
 
-export default function TabHistorial({ history, deleteDay, onToast, productMap }) {
-  const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date))
+export default function TabHistorial({ history, deleteDay, onToast, productMap, onEditEntry }) {
+  const sorted = [...history].sort((a, b) =>
+    b.date.localeCompare(a.date) || ((a.type || 'salida') === 'entrada' ? -1 : 1)
+  )
 
-  const handleDelete = (date) => {
-    if (window.confirm(`Eliminar el registro de ${formatDate(date)}?`)) {
-      deleteDay(date)
-      onToast(`Registro ${formatDate(date)} eliminado`, 'warn')
+  const handleDelete = (entry) => {
+    const entryType = entry.type || 'salida'
+    const label = entryType === 'entrada' ? 'entrada' : 'registro'
+    if (window.confirm(`Eliminar ${label} de ${formatDate(entry.date)}?`)) {
+      deleteDay(entry.date, entryType)
+      onToast(`${entryType === 'entrada' ? 'Entrada' : 'Registro'} ${formatDate(entry.date)} eliminado`, 'warn')
     }
   }
 
@@ -37,7 +41,7 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap }
       <div className="flex gap-2">
         <div className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-center">
           <p className="text-2xl font-mono font-bold text-accent-green">{sorted.length}</p>
-          <p className="text-xs text-text-muted font-ui">dias</p>
+          <p className="text-xs text-text-muted font-ui">registros</p>
         </div>
         <div className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-center">
           <p className="text-2xl font-mono font-bold text-accent-blue">{totalItems}</p>
@@ -45,43 +49,69 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap }
         </div>
       </div>
 
-      {sorted.map(entry => (
-        <div key={entry.date}
-          className="bg-surface border border-border rounded-2xl overflow-hidden animate-fade-in"
-        >
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
-            <span className="font-mono text-sm text-accent-green font-bold">
-              {formatDate(entry.date)}
-            </span>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-text-muted font-mono">
-                {entry.items.reduce((s, i) => s + i.qty, 0)} uds
-              </span>
-              <button
-                onClick={() => handleDelete(entry.date)}
-                className="text-xs text-accent-danger font-ui active:opacity-70"
-              >
-                Eliminar
-              </button>
+      {sorted.map(entry => {
+        const isEntrada = (entry.type || 'salida') === 'entrada'
+        return (
+          <div
+            key={entry.date + (entry.type || 'salida')}
+            className={`bg-surface border rounded-2xl overflow-hidden animate-fade-in
+              ${isEntrada ? 'border-accent-blue/30' : 'border-border'}`}
+          >
+            <div className={`flex items-center justify-between px-3 py-2.5 border-b
+              ${isEntrada ? 'border-accent-blue/20' : 'border-border'}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`font-mono text-sm font-bold
+                  ${isEntrada ? 'text-accent-blue' : 'text-accent-green'}`}
+                >
+                  {isEntrada ? '↑ ' : ''}{formatDate(entry.date)}
+                </span>
+                {isEntrada && (
+                  <span className="text-[10px] font-ui font-bold text-accent-blue
+                    bg-accent-blue/10 px-2 py-0.5 rounded-full">
+                    ENTRADA
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-text-muted font-mono">
+                  {entry.items.reduce((s, i) => s + i.qty, 0)} uds
+                </span>
+                <button
+                  onClick={() => onEditEntry(entry)}
+                  className="text-xs text-accent-blue font-ui active:opacity-70"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDelete(entry)}
+                  className="text-xs text-accent-danger font-ui active:opacity-70"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+            <div className="px-3 py-2 space-y-1.5">
+              {entry.items.map(item => {
+                const product = productMap[item.id]
+                return (
+                  <div key={item.id} className="flex justify-between items-center text-sm">
+                    <span className="text-text-muted font-ui">
+                      {product?.name ?? item.id}
+                    </span>
+                    <span className={`font-mono tabular-nums
+                      ${isEntrada ? 'text-accent-blue' : 'text-text-primary'}`}
+                    >
+                      {isEntrada ? '+' : ''}{item.qty}{' '}
+                      <span className="text-text-muted text-xs">{product?.unit}</span>
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
-          <div className="px-3 py-2 space-y-1.5">
-            {entry.items.map(item => {
-              const product = productMap[item.id]
-              return (
-                <div key={item.id} className="flex justify-between items-center text-sm">
-                  <span className="text-text-muted font-ui">
-                    {product?.name ?? item.id}
-                  </span>
-                  <span className="font-mono text-text-primary tabular-nums">
-                    {item.qty} <span className="text-text-muted text-xs">{product?.unit}</span>
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
