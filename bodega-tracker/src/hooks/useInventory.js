@@ -142,5 +142,13 @@ export function useInventory(products, productMap) {
     return 'ok'
   }, [getDaysRemaining])
 
-  return { stock, history, saveDay, deleteDay, getDaysRemaining, getStatus }
+  const applyStockSync = useCallback((changes) => {
+    setStock(prev => {
+      const next = { ...prev }
+      for (const { id, newStock } of changes) next[id] = newStock
+      return next
+    })
+  }, [])
+
+  return { stock, history, saveDay, deleteDay, getDaysRemaining, getStatus, applyStockSync }
 }
