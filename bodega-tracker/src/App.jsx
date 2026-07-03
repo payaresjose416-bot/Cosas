@@ -39,6 +39,7 @@ const TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState('registro')
   const [toast, setToast] = useState(null)
+  const [editEntry, setEditEntry] = useState(null)
   const { products, productMap, addProducts } = useProducts()
   const inventory = useInventory(products, productMap)
 
@@ -46,10 +47,15 @@ export default function App() {
     setToast({ message, type, key: Date.now() })
   }
 
+  const onEditEntry = (entry) => {
+    setEditEntry(entry)
+    setActiveTab('registro')
+  }
+
   const TAB_CONTENT = {
-    registro:  <TabRegistro  {...inventory} products={products} productMap={productMap} onToast={onToast} />,
+    registro:  <TabRegistro  {...inventory} products={products} productMap={productMap} onToast={onToast} editEntry={editEntry} onEditDone={() => setEditEntry(null)} />,
     dashboard: <TabDashboard {...inventory} products={products} productMap={productMap} onToast={onToast} />,
-    historial: <TabHistorial {...inventory} productMap={productMap} onToast={onToast} />,
+    historial: <TabHistorial {...inventory} productMap={productMap} onToast={onToast} onEditEntry={onEditEntry} />,
     exportar:  <TabExportar  {...inventory} products={products} addProducts={addProducts} onToast={onToast} />,
   }
 
