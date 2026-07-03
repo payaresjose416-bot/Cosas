@@ -26,8 +26,11 @@ export function useSync(key, localValue, onCloudUpdate) {
         (payload) => {
           if (saving.current) return
           const cloudValue = payload.new.value
+          if (cloudValue == null) return
+          const cloudStr = JSON.stringify(cloudValue)
+          if (cloudStr === '{}' || cloudStr === '[]') return
           const localStr = JSON.stringify(localValue)
-          if (JSON.stringify(cloudValue) !== localStr) {
+          if (cloudStr !== localStr) {
             onCloudUpdate(cloudValue)
           }
         }
@@ -39,6 +42,7 @@ export function useSync(key, localValue, onCloudUpdate) {
 
   const syncToCloud = useCallback((value) => {
     const str = JSON.stringify(value)
+    if (str === '{}' || str === '[]') return
     if (str === lastSaved.current) return
     lastSaved.current = str
     saving.current = true
