@@ -9,6 +9,22 @@ const MONTHS_ES = [
 ]
 
 export default function TabExportar({ history, stock, onToast, products, addProducts, applyStockSync }) {
+  const handleDownloadStock = () => {
+    const date = new Date().toISOString().slice(0, 10)
+    const lines = [`Stock restante — ${date}`, '']
+    for (const product of products) {
+      const qty = stock[product.id] ?? product.initialStock
+      lines.push(`${product.name}: ${qty} ${product.unit}`)
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `stock-${date}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+    onToast('Stock descargado', 'success')
+  }
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
@@ -177,6 +193,23 @@ export default function TabExportar({ history, stock, onToast, products, addProd
 
   return (
     <div className="flex flex-col gap-4 pb-4">
+      {/* Stock .txt download */}
+      <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
+        <div>
+          <p className="text-text-primary font-ui font-bold text-sm">Descargar stock actual</p>
+          <p className="text-text-muted text-xs font-ui mt-1 leading-relaxed">
+            Genera un .txt con las cantidades actuales de todos los productos para actualizar tu control de inventario.
+          </p>
+        </div>
+        <button
+          onClick={handleDownloadStock}
+          className="w-full py-3 bg-accent-blue text-bg font-ui font-bold
+            rounded-xl text-sm tracking-wide active:opacity-90 transition-opacity"
+        >
+          Descargar stock (.txt)
+        </button>
+      </div>
+
       {/* Period selector (for TSV) */}
       <div className="flex gap-2">
         <select
