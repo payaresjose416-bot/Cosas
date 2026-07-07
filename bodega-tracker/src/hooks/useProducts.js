@@ -21,14 +21,24 @@ function titleCase(str) {
   return str.replace(/\b\w/g, c => c.toUpperCase())
 }
 
+function mergeProducts(local, cloud) {
+  const map = new Map()
+  for (const p of local) map.set(p.id, p)
+  for (const p of cloud) if (!map.has(p.id)) map.set(p.id, p)
+  return [...map.values()]
+}
+
 export function useProducts() {
   const [customProducts, setCustomProducts] = useState(loadCustomProducts)
   const skipSync = useRef(false)
 
   const syncCustomProducts = useSync('custom_products', customProducts, useCallback((cloudProducts) => {
     skipSync.current = true
-    setCustomProducts(cloudProducts)
-    localStorage.setItem(LS_KEY, JSON.stringify(cloudProducts))
+    setCustomProducts(prev => {
+      const merged = mergeProducts(prev, cloudProducts)
+      localStorage.setItem(LS_KEY, JSON.stringify(merged))
+      return merged
+    })
   }, []))
 
   const products = useMemo(

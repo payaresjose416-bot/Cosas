@@ -4,12 +4,14 @@ import { supabase, loadFromCloud, saveToCloud } from '../utils/supabase.js'
 export function useSync(key, localValue, onCloudUpdate) {
   const saving = useRef(false)
   const lastSaved = useRef(null)
+  const localValueRef = useRef(localValue)
+  localValueRef.current = localValue
 
   useEffect(() => {
     loadFromCloud(key).then(cloudValue => {
       if (cloudValue == null) return
       const cloudStr = JSON.stringify(cloudValue)
-      const localStr = JSON.stringify(localValue)
+      const localStr = JSON.stringify(localValueRef.current)
       if (cloudStr === localStr) return
       if (cloudStr === '{}' || cloudStr === '[]') return
       if (localStr === '{}' || localStr === '[]') {
@@ -29,7 +31,7 @@ export function useSync(key, localValue, onCloudUpdate) {
           if (cloudValue == null) return
           const cloudStr = JSON.stringify(cloudValue)
           if (cloudStr === '{}' || cloudStr === '[]') return
-          const localStr = JSON.stringify(localValue)
+          const localStr = JSON.stringify(localValueRef.current)
           if (cloudStr !== localStr) {
             onCloudUpdate(cloudValue)
           }

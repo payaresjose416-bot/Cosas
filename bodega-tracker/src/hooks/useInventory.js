@@ -32,6 +32,16 @@ function initHistory() {
   return []
 }
 
+function mergeHistory(local, cloud) {
+  const map = new Map()
+  for (const entry of local) map.set(entry.date + '|' + (entry.type || 'salida'), entry)
+  for (const entry of cloud) {
+    const k = entry.date + '|' + (entry.type || 'salida')
+    if (!map.has(k)) map.set(k, entry)
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date))
+}
+
 export function useInventory(products, productMap) {
   const [stock, setStock] = useState(() => initStock(products))
   const [history, setHistory] = useState(initHistory)
@@ -46,8 +56,11 @@ export function useInventory(products, productMap) {
 
   const syncHistory = useSync('history', history, useCallback((cloudHistory) => {
     skipSyncHistory.current = true
-    setHistory(cloudHistory)
-    localStorage.setItem(KEYS.HISTORY, JSON.stringify(cloudHistory))
+    setHistory(prev => {
+      const merged = mergeHistory(prev, cloudHistory)
+      localStorage.setItem(KEYS.HISTORY, JSON.stringify(merged))
+      return merged
+    })
   }, []))
 
   useEffect(() => {
