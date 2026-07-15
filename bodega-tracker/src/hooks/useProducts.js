@@ -39,7 +39,7 @@ export function useProducts() {
       localStorage.setItem(LS_KEY, JSON.stringify(merged))
       return merged
     })
-  }, []))
+  }, []), mergeProducts)
 
   const products = useMemo(
     () => [...BASE_PRODUCTS, ...customProducts],

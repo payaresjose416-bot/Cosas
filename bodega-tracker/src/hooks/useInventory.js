@@ -61,7 +61,7 @@ export function useInventory(products, productMap) {
       localStorage.setItem(KEYS.HISTORY, JSON.stringify(merged))
       return merged
     })
-  }, []))
+  }, []), mergeHistory)
 
   useEffect(() => {
     setStock(prev => {
