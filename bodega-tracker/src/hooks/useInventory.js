@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { STOCK_VERSION } from '../utils/products.js'
 import { useSync } from './useSync.js'
 
@@ -7,6 +7,7 @@ const KEYS = {
   HISTORY: 'bodega_history',
   LAST_DATE: 'bodega_lastDate',
   STOCK_VERSION: 'bodega_stock_version',
+  THRESHOLDS: 'bodega_thresholds',
 }
 
 function initStock(products) {
@@ -32,21 +33,47 @@ function initHistory() {
   return []
 }
 
+function initThresholds() {
+  try {
+    const stored = localStorage.getItem(KEYS.THRESHOLDS)
+    if (stored) return JSON.parse(stored)
+  } catch {}
+  return {}
+}
+
+// LWW por clave: gana la versión con updatedAt más reciente (incluye tombstones
+// de borrado, para que un "eliminar" no resucite al sincronizar). Entradas
+// legacy sin updatedAt cuentan como 0 — en empate gana lo local (unión, v11).
+function mergeThresholds(local, cloud) {
+  const next = { ...local }
+  for (const [id, cv] of Object.entries(cloud || {})) {
+    const lv = next[id]
+    if (!lv || (cv.updatedAt || 0) > (lv.updatedAt || 0)) next[id] = cv
+  }
+  return next
+}
+
 function mergeHistory(local, cloud) {
   const map = new Map()
-  for (const entry of local) map.set(entry.date + '|' + (entry.type || 'salida'), entry)
+  const keyOf = e => e.date + '|' + (e.type || 'salida')
+  for (const entry of local) map.set(keyOf(entry), entry)
   for (const entry of cloud) {
-    const k = entry.date + '|' + (entry.type || 'salida')
-    if (!map.has(k)) map.set(k, entry)
+    const k = keyOf(entry)
+    const existing = map.get(k)
+    if (!existing || (entry.updatedAt || 0) > (existing.updatedAt || 0)) map.set(k, entry)
   }
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export function useInventory(products, productMap) {
   const [stock, setStock] = useState(() => initStock(products))
-  const [history, setHistory] = useState(initHistory)
+  const [rawHistory, setRawHistory] = useState(initHistory)
+  const [thresholds, setThresholds] = useState(initThresholds)
   const skipSyncStock = useRef(false)
   const skipSyncHistory = useRef(false)
+  const skipSyncThresholds = useRef(false)
+
+  const history = useMemo(() => rawHistory.filter(h => !h.deleted), [rawHistory])
 
   const syncStock = useSync('stock', stock, useCallback((cloudStock) => {
     skipSyncStock.current = true
@@ -54,9 +81,9 @@ export function useInventory(products, productMap) {
     localStorage.setItem(KEYS.STOCK, JSON.stringify(cloudStock))
   }, []))
 
-  const syncHistory = useSync('history', history, useCallback((cloudHistory) => {
+  const syncHistory = useSync('history', rawHistory, useCallback((cloudHistory) => {
     skipSyncHistory.current = true
-    setHistory(prev => {
+    setRawHistory(prev => {
       const merged = mergeHistory(prev, cloudHistory)
       localStorage.setItem(KEYS.HISTORY, JSON.stringify(merged))
       return merged
@@ -84,18 +111,46 @@ export function useInventory(products, productMap) {
   }, [stock, syncStock])
 
   useEffect(() => {
-    localStorage.setItem(KEYS.HISTORY, JSON.stringify(history))
+    localStorage.setItem(KEYS.HISTORY, JSON.stringify(rawHistory))
     if (skipSyncHistory.current) { skipSyncHistory.current = false; return }
-    syncHistory(history)
-  }, [history, syncHistory])
+    syncHistory(rawHistory)
+  }, [rawHistory, syncHistory])
+
+  const syncThresholds = useSync('thresholds', thresholds, useCallback((cloudThresholds) => {
+    skipSyncThresholds.current = true
+    setThresholds(prev => {
+      const merged = mergeThresholds(prev, cloudThresholds)
+      localStorage.setItem(KEYS.THRESHOLDS, JSON.stringify(merged))
+      return merged
+    })
+  }, []), mergeThresholds)
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.THRESHOLDS, JSON.stringify(thresholds))
+    if (skipSyncThresholds.current) { skipSyncThresholds.current = false; return }
+    syncThresholds(thresholds)
+  }, [thresholds, syncThresholds])
+
+  const setThreshold = useCallback((productId, value) => {
+    setThresholds(prev => {
+      const next = { ...prev }
+      if (value == null) next[productId] = { deleted: true, updatedAt: Date.now() }
+      else next[productId] = {
+        critical: Number(value.critical) || 0,
+        low: Number(value.low) || 0,
+        updatedAt: Date.now(),
+      }
+      return next
+    })
+  }, [])
 
   const saveDay = useCallback((date, items, type = 'salida') => {
-    setHistory(prev => {
+    setRawHistory(prev => {
       const existing = prev.find(h => h.date === date && (h.type || 'salida') === type)
 
       setStock(prevStock => {
         const next = { ...prevStock }
-        if (existing) {
+        if (existing && !existing.deleted) {
           for (const item of existing.items) {
             if (type === 'salida') next[item.id] = (next[item.id] || 0) + item.qty
             else next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
@@ -109,16 +164,17 @@ export function useInventory(products, productMap) {
       })
 
       const filtered = prev.filter(h => !(h.date === date && (h.type || 'salida') === type))
-      return [...filtered, { date, type, items }].sort((a, b) => a.date.localeCompare(b.date))
+      return [...filtered, { date, type, items, updatedAt: Date.now() }]
+        .sort((a, b) => a.date.localeCompare(b.date))
     })
 
     localStorage.setItem(KEYS.LAST_DATE, date)
   }, [])
 
   const deleteDay = useCallback((date, type = 'salida') => {
-    setHistory(prev => {
+    setRawHistory(prev => {
       const entry = prev.find(h => h.date === date && (h.type || 'salida') === type)
-      if (entry) {
+      if (entry && !entry.deleted) {
         setStock(prevStock => {
           const next = { ...prevStock }
           for (const item of entry.items) {
@@ -128,7 +184,11 @@ export function useInventory(products, productMap) {
           return next
         })
       }
-      return prev.filter(h => !(h.date === date && (h.type || 'salida') === type))
+      // Tombstone en vez de borrado real: al fusionar con la nube gana por
+      // updatedAt y el registro no resucita en otros dispositivos.
+      const filtered = prev.filter(h => !(h.date === date && (h.type || 'salida') === type))
+      return [...filtered, { date, type, items: [], deleted: true, updatedAt: Date.now() }]
+        .sort((a, b) => a.date.localeCompare(b.date))
     })
   }, [])
 
@@ -152,11 +212,18 @@ export function useInventory(products, productMap) {
   }, [stock, history, productMap])
 
   const getStatus = useCallback((productId) => {
+    const t = thresholds[productId]
+    if (t && !t.deleted) {
+      const currentStock = stock[productId] ?? productMap[productId]?.initialStock ?? 0
+      if (currentStock <= t.critical) return 'critical'
+      if (currentStock <= t.low) return 'low'
+      return 'ok'
+    }
     const days = getDaysRemaining(productId)
     if (days < 3) return 'critical'
     if (days < 7) return 'low'
     return 'ok'
-  }, [getDaysRemaining])
+  }, [getDaysRemaining, thresholds, stock, productMap])
 
   const applyStockSync = useCallback((changes) => {
     setStock(prev => {
@@ -166,5 +233,8 @@ export function useInventory(products, productMap) {
     })
   }, [])
 
-  return { stock, history, saveDay, deleteDay, getDaysRemaining, getStatus, applyStockSync }
+  return {
+    stock, history, saveDay, deleteDay, getDaysRemaining, getStatus,
+    applyStockSync, thresholds, setThreshold,
+  }
 }

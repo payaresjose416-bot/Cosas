@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useProducts } from './hooks/useProducts.js'
 import { useInventory } from './hooks/useInventory.js'
+import { useCriticalAlert, notificationsEnabled, enableNotifications, disableNotifications } from './hooks/useCriticalAlert.js'
 import TabRegistro from './components/TabRegistro.jsx'
 import TabDashboard from './components/TabDashboard.jsx'
 import TabHistorial from './components/TabHistorial.jsx'
@@ -40,11 +41,28 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('registro')
   const [toast, setToast] = useState(null)
   const [editEntry, setEditEntry] = useState(null)
+  const [notifyOn, setNotifyOn] = useState(notificationsEnabled)
   const { products, productMap, addProducts } = useProducts()
   const inventory = useInventory(products, productMap)
 
+  useCriticalAlert(products, inventory.getStatus)
+
   const onToast = (message, type = 'success') => {
     setToast({ message, type, key: Date.now() })
+  }
+
+  const toggleNotifications = async () => {
+    if (notifyOn) {
+      disableNotifications()
+      setNotifyOn(false)
+      onToast('Avisos de stock desactivados', 'info')
+    } else {
+      const ok = await enableNotifications()
+      setNotifyOn(ok)
+      onToast(ok
+        ? 'Avisos activados — te notificaremos el stock crítico'
+        : 'Permiso de notificaciones denegado', ok ? 'success' : 'warn')
+    }
   }
 
   const onEditEntry = (entry) => {
@@ -71,9 +89,25 @@ export default function App() {
               Coosalud Inversa S.A.
             </p>
           </div>
-          <div className="w-9 h-9 rounded-xl bg-accent-green/10 border border-accent-green/20
-            flex items-center justify-center">
-            <span className="text-accent-green font-mono font-bold text-base">B</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleNotifications}
+              aria-label={notifyOn ? 'Desactivar avisos' : 'Activar avisos'}
+              className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-colors
+                ${notifyOn
+                  ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'
+                  : 'bg-surface border-border text-text-muted active:text-text-primary'}`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="w-4.5 h-4.5" stroke="currentColor" strokeWidth="2">
+                <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M13.7 21a2 2 0 01-3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+                {!notifyOn && <path d="M3 3l18 18" strokeLinecap="round" />}
+              </svg>
+            </button>
+            <div className="w-9 h-9 rounded-xl bg-accent-green/10 border border-accent-green/20
+              flex items-center justify-center">
+              <span className="text-accent-green font-mono font-bold text-base">B</span>
+            </div>
           </div>
         </div>
       </header>
