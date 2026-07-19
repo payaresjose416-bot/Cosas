@@ -23,9 +23,90 @@ const STATUS = {
   },
 }
 
-export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap }) {
+export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold }) {
   const [filter, setFilter] = useState('todos')
+  const [qtyOverride, setQtyOverride] = useState({})
+  const [editingId, setEditingId] = useState(null)
+  const [editVals, setEditVals] = useState({ critical: '', low: '' })
   const { loading, result, error, analyze } = useAI()
+
+  const shopping = products
+    .filter(p => {
+      const s = getStatus(p.id)
+      return s === 'critical' || s === 'low'
+    })
+    .map(p => {
+      const currentStock = stock[p.id] ?? p.initialStock
+      const days = getDaysRemaining(p.id)
+      const rate = isFinite(days) && days > 0 ? currentStock / days : 0
+      const t = thresholds?.[p.id]
+      let suggested
+      if (rate > 0) suggested = Math.max(1, Math.ceil(rate * 14 - currentStock))
+      else if (t && !t.deleted && t.low > 0) suggested = Math.max(1, Math.ceil(t.low * 2 - currentStock))
+      else suggested = 1
+      return { product: p, qty: qtyOverride[p.id] ?? suggested }
+    })
+
+  const shoppingText = () => {
+    const now = new Date()
+    const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`
+    const lines = shopping.map(({ product, qty }) => `• ${product.name}: ${qty} ${product.unit}`)
+    return `Lista de compras — ${dateStr}\n${lines.join('\n')}`
+  }
+
+  const handleCopyList = async () => {
+    try {
+      await navigator.clipboard.writeText(shoppingText())
+      onToast('Lista copiada al portapapeles', 'success')
+    } catch {
+      onToast('Error al copiar', 'error')
+    }
+  }
+
+  const handleShareList = async () => {
+    const text = shoppingText()
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Lista de compras — Bodega', text })
+      } catch {}
+    } else {
+      handleCopyList()
+    }
+  }
+
+  const adjustQty = (id, delta) => {
+    setQtyOverride(prev => {
+      const current = shopping.find(s => s.product.id === id)?.qty ?? 1
+      return { ...prev, [id]: Math.max(1, current + delta) }
+    })
+  }
+
+  const openThresholdEditor = (p) => {
+    if (editingId === p.id) { setEditingId(null); return }
+    const t = thresholds?.[p.id]
+    setEditVals(t && !t.deleted
+      ? { critical: String(t.critical), low: String(t.low) }
+      : { critical: '', low: '' })
+    setEditingId(p.id)
+  }
+
+  const handleSaveThreshold = (p) => {
+    const critical = Number(editVals.critical)
+    const low = Number(editVals.low)
+    if (!isFinite(critical) || !isFinite(low) || low < critical) {
+      onToast('Revisa los valores: "bajo" debe ser mayor o igual que "crítico"', 'warn')
+      return
+    }
+    setThreshold(p.id, { critical, low })
+    setEditingId(null)
+    onToast(`Umbral guardado para ${p.name}`, 'success')
+  }
+
+  const handleAutoThreshold = (p) => {
+    setThreshold(p.id, null)
+    setEditingId(null)
+    onToast(`${p.name} vuelve al cálculo automático`, 'info')
+  }
 
   const counts = { critical: 0, low: 0, ok: 0 }
   for (const p of products) counts[getStatus(p.id)]++
@@ -99,6 +180,63 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
         ))}
       </div>
 
+      {/* Lista de compras sugerida */}
+      <div className="bg-surface border border-border rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-text-primary font-ui font-bold text-sm">Lista de compras</p>
+          {shopping.length > 0 && (
+            <span className="text-[11px] font-mono text-text-muted">
+              cobertura ~14 dias
+            </span>
+          )}
+        </div>
+        {shopping.length === 0 ? (
+          <p className="text-text-muted text-xs font-ui">
+            Stock saludable — nada por comprar
+          </p>
+        ) : (
+          <>
+            <div className="mt-2 space-y-1.5">
+              {shopping.map(({ product, qty }) => (
+                <div key={product.id} className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 text-text-muted font-ui leading-tight">{product.name}</span>
+                  <button
+                    onClick={() => adjustQty(product.id, -1)}
+                    className="w-6 h-6 rounded-md bg-bg border border-border text-text-muted
+                      active:text-text-primary font-mono text-xs"
+                  >−</button>
+                  <span className="font-mono text-accent-green font-bold tabular-nums w-8 text-center">
+                    {qty}
+                  </span>
+                  <button
+                    onClick={() => adjustQty(product.id, 1)}
+                    className="w-6 h-6 rounded-md bg-bg border border-border text-text-muted
+                      active:text-text-primary font-mono text-xs"
+                  >+</button>
+                  <span className="text-[10px] font-mono text-text-muted w-16">{product.unit}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleCopyList}
+                className="flex-1 py-2 border border-border rounded-xl text-text-muted
+                  font-ui text-sm font-semibold active:bg-bg transition-colors"
+              >
+                Copiar
+              </button>
+              <button
+                onClick={handleShareList}
+                className="flex-1 py-2 bg-accent-green text-bg rounded-xl
+                  font-ui text-sm font-bold active:opacity-90 transition-opacity"
+              >
+                Compartir
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="flex gap-1 bg-surface border border-border rounded-xl p-1">
         {Object.entries(FILTER_LABELS).map(([key, label]) => (
           <button
@@ -132,27 +270,91 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
           const pct = Math.min(100, Math.max(0, (days / 14) * 100))
           const sc = STATUS[status]
           const currentStock = stock[p.id] ?? p.initialStock
+          const t = thresholds?.[p.id]
+          const hasCustom = t && !t.deleted
 
           return (
-            <div key={p.id}
-              className="grid grid-cols-[1fr_4rem_4rem] items-center px-3 py-2.5
-                border-b border-border last:border-0 gap-2"
-            >
-              <div>
-                <p className="text-sm font-ui text-text-primary leading-tight">{p.name}</p>
-                <div className="mt-1.5 h-1 bg-border rounded-full w-20 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${sc.bar}`}
-                    style={{ width: `${pct}%` }}
-                  />
+            <div key={p.id} className="border-b border-border last:border-0">
+              <button
+                onClick={() => openThresholdEditor(p)}
+                className="w-full grid grid-cols-[1fr_4rem_4rem] items-center px-3 py-2.5 gap-2 text-left"
+              >
+                <div>
+                  <p className="text-sm font-ui text-text-primary leading-tight">
+                    {p.name}
+                    {hasCustom && <span className="ml-1.5 text-[10px] text-accent-blue">⚙</span>}
+                  </p>
+                  <div className="mt-1.5 h-1 bg-border rounded-full w-20 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${sc.bar}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
-              <span className="font-mono text-sm text-right text-text-primary tabular-nums">
-                {currentStock % 1 === 0 ? currentStock : currentStock.toFixed(1)}
-              </span>
-              <span className={`font-mono text-sm text-right font-bold tabular-nums ${sc.text}`}>
-                {isFinite(days) && days < 999 ? days.toFixed(1) : '∞'}
-              </span>
+                <span className="font-mono text-sm text-right text-text-primary tabular-nums">
+                  {currentStock % 1 === 0 ? currentStock : currentStock.toFixed(1)}
+                </span>
+                <span className={`font-mono text-sm text-right font-bold tabular-nums ${sc.text}`}>
+                  {isFinite(days) && days < 999 ? days.toFixed(1) : '∞'}
+                </span>
+              </button>
+
+              {editingId === p.id && (
+                <div className="px-3 pb-3 animate-fade-in">
+                  <div className="bg-bg border border-border rounded-xl p-3">
+                    <p className="text-[11px] font-mono text-text-muted uppercase tracking-wider mb-2">
+                      Umbral de alerta ({p.unit.toLowerCase()})
+                    </p>
+                    <div className="flex gap-2 items-center">
+                      <label className="flex-1">
+                        <span className="text-xs text-accent-danger font-ui">Critico si ≤</span>
+                        <input
+                          type="number" inputMode="decimal" min="0"
+                          value={editVals.critical}
+                          onChange={e => setEditVals(v => ({ ...v, critical: e.target.value }))}
+                          className="mt-1 w-full bg-surface border border-border rounded-lg px-2 py-1.5
+                            text-text-primary font-mono text-sm focus:outline-none focus:border-accent-danger"
+                        />
+                      </label>
+                      <label className="flex-1">
+                        <span className="text-xs text-accent-warn font-ui">Bajo si ≤</span>
+                        <input
+                          type="number" inputMode="decimal" min="0"
+                          value={editVals.low}
+                          onChange={e => setEditVals(v => ({ ...v, low: e.target.value }))}
+                          className="mt-1 w-full bg-surface border border-border rounded-lg px-2 py-1.5
+                            text-text-primary font-mono text-sm focus:outline-none focus:border-accent-warn"
+                        />
+                      </label>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => handleSaveThreshold(p)}
+                        disabled={editVals.critical === '' || editVals.low === ''}
+                        className="flex-1 py-1.5 bg-accent-green text-bg font-ui font-bold rounded-lg
+                          text-xs disabled:opacity-30 active:opacity-90"
+                      >
+                        Guardar
+                      </button>
+                      {hasCustom && (
+                        <button
+                          onClick={() => handleAutoThreshold(p)}
+                          className="flex-1 py-1.5 border border-border rounded-lg text-text-muted
+                            font-ui text-xs active:text-text-primary"
+                        >
+                          Usar automatico
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="px-3 py-1.5 text-text-muted font-ui text-xs active:text-text-primary"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}

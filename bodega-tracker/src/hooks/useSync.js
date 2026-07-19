@@ -58,7 +58,7 @@ export function useSync(key, localValue, onCloudUpdate, merge) {
     const channel = supabase
       .channel(`app_data_${key}`)
       .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'app_data', filter: `key=eq.${key}` },
+        { event: '*', schema: 'public', table: 'app_data', filter: `key=eq.${key}` },
         (payload) => {
           if (saving.current) return
           const cloudValue = payload.new.value
