@@ -23,11 +23,12 @@ const STATUS = {
   },
 }
 
-export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold }) {
+export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold, updateStock }) {
   const [filter, setFilter] = useState('todos')
   const [qtyOverride, setQtyOverride] = useState({})
   const [editingId, setEditingId] = useState(null)
   const [editVals, setEditVals] = useState({ critical: '', low: '' })
+  const [stockInput, setStockInput] = useState('')
   const { loading, result, error, analyze } = useAI()
 
   const shopping = products
@@ -87,7 +88,26 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
     setEditVals(t && !t.deleted
       ? { critical: String(t.critical), low: String(t.low) }
       : { critical: '', low: '' })
+    setStockInput(String(stock[p.id] ?? p.initialStock))
     setEditingId(p.id)
+  }
+
+  const stepStock = (delta) => {
+    setStockInput(v => {
+      const n = Math.max(0, (Number(v) || 0) + delta)
+      return String(n)
+    })
+  }
+
+  const handleSaveStock = (p) => {
+    const qty = Number(stockInput)
+    if (!isFinite(qty) || qty < 0) {
+      onToast('Cantidad de stock inválida', 'warn')
+      return
+    }
+    updateStock(p.id, qty)
+    const qtyStr = qty % 1 === 0 ? String(qty) : qty.toFixed(1)
+    onToast(`Stock de ${p.name} actualizado a ${qtyStr} ${p.unit}`, 'success')
   }
 
   const handleSaveThreshold = (p) => {
@@ -302,6 +322,43 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
               {editingId === p.id && (
                 <div className="px-3 pb-3 animate-fade-in">
                   <div className="bg-bg border border-border rounded-xl p-3">
+                    <p className="text-[11px] font-mono text-text-muted uppercase tracking-wider mb-2">
+                      Editar stock actual
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => stepStock(-1)}
+                        className="w-9 h-9 shrink-0 rounded-lg bg-surface border border-border
+                          text-text-primary font-mono text-lg active:opacity-70"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number" inputMode="decimal" min="0"
+                        value={stockInput}
+                        onChange={e => setStockInput(e.target.value)}
+                        className="flex-1 min-w-0 text-center bg-surface border border-border rounded-lg py-2
+                          text-text-primary font-mono text-lg tabular-nums focus:outline-none focus:border-accent-green"
+                      />
+                      <button
+                        onClick={() => stepStock(1)}
+                        className="w-9 h-9 shrink-0 rounded-lg bg-surface border border-border
+                          text-text-primary font-mono text-lg active:opacity-70"
+                      >
+                        +
+                      </button>
+                      <span className="text-[10px] font-mono text-text-muted w-14 shrink-0">{p.unit}</span>
+                    </div>
+                    <button
+                      onClick={() => handleSaveStock(p)}
+                      className="w-full mt-2 py-1.5 bg-accent-green text-bg font-ui font-bold
+                        rounded-lg text-xs active:opacity-90"
+                    >
+                      Guardar stock
+                    </button>
+
+                    <div className="h-px bg-border my-3" />
+
                     <p className="text-[11px] font-mono text-text-muted uppercase tracking-wider mb-2">
                       Umbral de alerta ({p.unit.toLowerCase()})
                     </p>

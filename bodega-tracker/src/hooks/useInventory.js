@@ -10,19 +10,34 @@ const KEYS = {
   THRESHOLDS: 'bodega_thresholds',
 }
 
-function initStock(products) {
+function toEntries(qtyMap) {
+  return Object.fromEntries(Object.entries(qtyMap || {}).map(([id, v]) =>
+    [id, (v && typeof v === 'object') ? v : { qty: Number(v) || 0, updatedAt: 0 }]
+  ))
+}
+
+function mergeStock(local, cloud) {
+  const next = { ...toEntries(local) }
+  for (const [id, entry] of Object.entries(toEntries(cloud))) {
+    const lv = next[id]
+    if (!lv || (entry.updatedAt || 0) > (lv.updatedAt || 0)) next[id] = entry
+  }
+  return next
+}
+
+function initStockEntries(products) {
   try {
     const savedVersion = Number(localStorage.getItem(KEYS.STOCK_VERSION) || 0)
     if (savedVersion < STOCK_VERSION) {
       localStorage.removeItem(KEYS.STOCK)
       localStorage.setItem(KEYS.STOCK_VERSION, String(STOCK_VERSION))
-      return Object.fromEntries(products.map(p => [p.id, p.initialStock]))
+      return Object.fromEntries(products.map(p => [p.id, { qty: p.initialStock, updatedAt: 0 }]))
     }
     const stored = localStorage.getItem(KEYS.STOCK)
-    if (stored) return JSON.parse(stored)
+    if (stored) return toEntries(JSON.parse(stored))
   } catch {}
   localStorage.setItem(KEYS.STOCK_VERSION, String(STOCK_VERSION))
-  return Object.fromEntries(products.map(p => [p.id, p.initialStock]))
+  return Object.fromEntries(products.map(p => [p.id, { qty: p.initialStock, updatedAt: 0 }]))
 }
 
 function initHistory() {
@@ -66,7 +81,7 @@ function mergeHistory(local, cloud) {
 }
 
 export function useInventory(products, productMap) {
-  const [stock, setStock] = useState(() => initStock(products))
+  const [stockEntries, setStockEntries] = useState(() => initStockEntries(products))
   const [rawHistory, setRawHistory] = useState(initHistory)
   const [thresholds, setThresholds] = useState(initThresholds)
   const skipSyncStock = useRef(false)
@@ -74,12 +89,19 @@ export function useInventory(products, productMap) {
   const skipSyncThresholds = useRef(false)
 
   const history = useMemo(() => rawHistory.filter(h => !h.deleted), [rawHistory])
+  const stock = useMemo(
+    () => Object.fromEntries(Object.entries(stockEntries).map(([id, e]) => [id, e.qty])),
+    [stockEntries],
+  )
 
-  const syncStock = useSync('stock', stock, useCallback((cloudStock) => {
+  const syncStock = useSync('stock', stockEntries, useCallback((cloudStock) => {
     skipSyncStock.current = true
-    setStock(cloudStock)
-    localStorage.setItem(KEYS.STOCK, JSON.stringify(cloudStock))
-  }, []))
+    setStockEntries(prev => {
+      const merged = mergeStock(prev, cloudStock)
+      localStorage.setItem(KEYS.STOCK, JSON.stringify(merged))
+      return merged
+    })
+  }, []), mergeStock)
 
   const syncHistory = useSync('history', rawHistory, useCallback((cloudHistory) => {
     skipSyncHistory.current = true
@@ -91,12 +113,12 @@ export function useInventory(products, productMap) {
   }, []), mergeHistory)
 
   useEffect(() => {
-    setStock(prev => {
+    setStockEntries(prev => {
       let changed = false
       const next = { ...prev }
       for (const p of products) {
         if (!(p.id in next)) {
-          next[p.id] = p.initialStock
+          next[p.id] = { qty: p.initialStock, updatedAt: 0 }
           changed = true
         }
       }
@@ -105,10 +127,10 @@ export function useInventory(products, productMap) {
   }, [products])
 
   useEffect(() => {
-    localStorage.setItem(KEYS.STOCK, JSON.stringify(stock))
+    localStorage.setItem(KEYS.STOCK, JSON.stringify(stockEntries))
     if (skipSyncStock.current) { skipSyncStock.current = false; return }
-    syncStock(stock)
-  }, [stock, syncStock])
+    syncStock(stockEntries)
+  }, [stockEntries, syncStock])
 
   useEffect(() => {
     localStorage.setItem(KEYS.HISTORY, JSON.stringify(rawHistory))
@@ -148,17 +170,20 @@ export function useInventory(products, productMap) {
     setRawHistory(prev => {
       const existing = prev.find(h => h.date === date && (h.type || 'salida') === type)
 
-      setStock(prevStock => {
-        const next = { ...prevStock }
+      setStockEntries(prevEntries => {
+        const now = Date.now()
+        const next = { ...prevEntries }
+        const bump = (id, delta) => {
+          const cur = next[id]?.qty ?? 0
+          next[id] = { qty: Math.max(0, cur + delta), updatedAt: now }
+        }
         if (existing && !existing.deleted) {
           for (const item of existing.items) {
-            if (type === 'salida') next[item.id] = (next[item.id] || 0) + item.qty
-            else next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
+            bump(item.id, type === 'salida' ? item.qty : -item.qty)
           }
         }
         for (const item of items) {
-          if (type === 'salida') next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
-          else next[item.id] = (next[item.id] || 0) + item.qty
+          bump(item.id, type === 'salida' ? -item.qty : item.qty)
         }
         return next
       })
@@ -175,11 +200,13 @@ export function useInventory(products, productMap) {
     setRawHistory(prev => {
       const entry = prev.find(h => h.date === date && (h.type || 'salida') === type)
       if (entry && !entry.deleted) {
-        setStock(prevStock => {
-          const next = { ...prevStock }
+        setStockEntries(prevEntries => {
+          const now = Date.now()
+          const next = { ...prevEntries }
           for (const item of entry.items) {
-            if ((entry.type || 'salida') === 'salida') next[item.id] = (next[item.id] || 0) + item.qty
-            else next[item.id] = Math.max(0, (next[item.id] || 0) - item.qty)
+            const cur = next[item.id]?.qty ?? 0
+            const delta = (entry.type || 'salida') === 'salida' ? item.qty : -item.qty
+            next[item.id] = { qty: Math.max(0, cur + delta), updatedAt: now }
           }
           return next
         })
@@ -226,15 +253,23 @@ export function useInventory(products, productMap) {
   }, [getDaysRemaining, thresholds, stock, productMap])
 
   const applyStockSync = useCallback((changes) => {
-    setStock(prev => {
+    const now = Date.now()
+    setStockEntries(prev => {
       const next = { ...prev }
-      for (const { id, newStock } of changes) next[id] = newStock
+      for (const { id, newStock } of changes) next[id] = { qty: newStock, updatedAt: now }
       return next
     })
   }, [])
 
+  const updateStock = useCallback((productId, newQty) => {
+    setStockEntries(prev => ({
+      ...prev,
+      [productId]: { qty: Math.max(0, Number(newQty) || 0), updatedAt: Date.now() },
+    }))
+  }, [])
+
   return {
     stock, history, saveDay, deleteDay, getDaysRemaining, getStatus,
-    applyStockSync, thresholds, setThreshold,
+    applyStockSync, thresholds, setThreshold, updateStock,
   }
 }
