@@ -1,0 +1,8 @@
+{
+  "name": "bodega",
+  "displayName": "Bodega Tracker",
+  "version": "0.1.0",
+  "description": "Consulta y registra el inventario de cafetería y aseo de Inversa-Coosalud desde Claude, vía el CLI 'bodega'.",
+  "author": { "name": "José Payares" },
+  "keywords": ["inventario", "bodega", "cafeteria", "aseo", "coosalud"]
+}
