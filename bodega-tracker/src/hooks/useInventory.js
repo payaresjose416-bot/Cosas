@@ -4,7 +4,7 @@ import { useSync } from './useSync.js'
 import { toEntries, mergeStock, mergeThresholds, mergeHistory } from '../core/merge.js'
 import {
   historyForSaveDay, stockBumpForSaveDay, historyForDeleteDay, stockBumpForDeleteDay,
-  applyUpdateStock, applySetThreshold, applyStockSyncChanges,
+  applyUpdateStock, applySetThreshold, applySetInitialStock, applyStockSyncChanges,
 } from '../core/inventory.js'
 import { getDaysRemaining as coreGetDaysRemaining, getStatus as coreGetStatus } from '../core/status.js'
 
@@ -14,6 +14,7 @@ const KEYS = {
   LAST_DATE: 'bodega_lastDate',
   STOCK_VERSION: 'bodega_stock_version',
   THRESHOLDS: 'bodega_thresholds',
+  INITIAL_STOCKS: 'bodega_initial_stocks',
 }
 
 function initStockEntries(products) {
@@ -47,13 +48,23 @@ function initThresholds() {
   return {}
 }
 
+function initInitialStocks() {
+  try {
+    const stored = localStorage.getItem(KEYS.INITIAL_STOCKS)
+    if (stored) return JSON.parse(stored)
+  } catch {}
+  return {}
+}
+
 export function useInventory(products, productMap) {
   const [stockEntries, setStockEntries] = useState(() => initStockEntries(products))
   const [rawHistory, setRawHistory] = useState(initHistory)
   const [thresholds, setThresholds] = useState(initThresholds)
+  const [initialStocks, setInitialStocks] = useState(initInitialStocks)
   const skipSyncStock = useRef(false)
   const skipSyncHistory = useRef(false)
   const skipSyncThresholds = useRef(false)
+  const skipSyncInitialStocks = useRef(false)
 
   const history = useMemo(() => rawHistory.filter(h => !h.deleted), [rawHistory])
   const stock = useMemo(
@@ -120,8 +131,33 @@ export function useInventory(products, productMap) {
     syncThresholds(thresholds)
   }, [thresholds, syncThresholds])
 
+  const syncInitialStocks = useSync('initial_stocks', initialStocks, useCallback((cloudInitialStocks) => {
+    skipSyncInitialStocks.current = true
+    setInitialStocks(prev => {
+      const merged = mergeThresholds(prev, cloudInitialStocks)
+      localStorage.setItem(KEYS.INITIAL_STOCKS, JSON.stringify(merged))
+      return merged
+    })
+  }, []), mergeThresholds)
+
+  useEffect(() => {
+    localStorage.setItem(KEYS.INITIAL_STOCKS, JSON.stringify(initialStocks))
+    if (skipSyncInitialStocks.current) { skipSyncInitialStocks.current = false; return }
+    syncInitialStocks(initialStocks)
+  }, [initialStocks, syncInitialStocks])
+
   const setThreshold = useCallback((productId, value) => {
     setThresholds(prev => applySetThreshold(prev, { productId, value }))
+  }, [])
+
+  const getInitialStock = useCallback((productId) => {
+    const o = initialStocks[productId]
+    if (o && !o.deleted) return o.value
+    return productMap[productId]?.initialStock ?? 0
+  }, [initialStocks, productMap])
+
+  const setInitialStock = useCallback((productId, value) => {
+    setInitialStocks(prev => applySetInitialStock(prev, { productId, value }))
   }, [])
 
   const saveDay = useCallback((date, items, type = 'salida') => {
@@ -161,5 +197,6 @@ export function useInventory(products, productMap) {
   return {
     stock, history, saveDay, deleteDay, getDaysRemaining, getStatus,
     applyStockSync, thresholds, setThreshold, updateStock,
+    initialStocks, getInitialStock, setInitialStock,
   }
 }

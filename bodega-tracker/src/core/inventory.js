@@ -81,6 +81,13 @@ export function applyUpdateStock(stockEntries, { productId, newQty, now = Date.n
   }
 }
 
+export function applySetInitialStock(initialStocks, { productId, value, now = Date.now() }) {
+  const next = { ...initialStocks }
+  if (value == null) next[productId] = { deleted: true, updatedAt: now }
+  else next[productId] = { value: Math.max(0, Number(value) || 0), updatedAt: now }
+  return next
+}
+
 export function applySetThreshold(thresholds, { productId, value, now = Date.now() }) {
   const next = { ...thresholds }
   if (value == null) next[productId] = { deleted: true, updatedAt: now }

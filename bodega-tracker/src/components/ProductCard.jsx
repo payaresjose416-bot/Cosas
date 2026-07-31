@@ -1,4 +1,4 @@
-export default function ProductCard({ product, productId, qty, onIncrement, onDecrement }) {
+export default function ProductCard({ product, productId, qty, currentStock, onIncrement, onDecrement }) {
   if (!product) return null
 
   const isCafe = product.category === 'cafeteria'
@@ -24,7 +24,14 @@ export default function ProductCard({ product, productId, qty, onIncrement, onDe
         </span>
       </div>
 
-      <p className={`text-xs font-mono ${accent}`}>{product.unit}</p>
+      <div className="flex items-center justify-between gap-1">
+        <p className={`text-xs font-mono ${accent}`}>{product.unit}</p>
+        {currentStock != null && (
+          <p className="text-[10px] font-mono text-text-muted shrink-0">
+            Stock: {currentStock % 1 === 0 ? currentStock : currentStock.toFixed(1)}
+          </p>
+        )}
+      </div>
 
       <div className="flex items-center justify-between mt-1">
         <button

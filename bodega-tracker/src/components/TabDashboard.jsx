@@ -23,12 +23,13 @@ const STATUS = {
   },
 }
 
-export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold, updateStock }) {
+export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold, updateStock, getInitialStock, setInitialStock }) {
   const [filter, setFilter] = useState('todos')
   const [qtyOverride, setQtyOverride] = useState({})
   const [editingId, setEditingId] = useState(null)
   const [editVals, setEditVals] = useState({ critical: '', low: '' })
   const [stockInput, setStockInput] = useState('')
+  const [initialStockInput, setInitialStockInput] = useState('')
   const { loading, result, error, analyze } = useAI()
 
   const shopping = products
@@ -89,11 +90,19 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
       ? { critical: String(t.critical), low: String(t.low) }
       : { critical: '', low: '' })
     setStockInput(String(stock[p.id] ?? p.initialStock))
+    setInitialStockInput(String(getInitialStock(p.id)))
     setEditingId(p.id)
   }
 
   const stepStock = (delta) => {
     setStockInput(v => {
+      const n = Math.max(0, (Number(v) || 0) + delta)
+      return String(n)
+    })
+  }
+
+  const stepInitialStock = (delta) => {
+    setInitialStockInput(v => {
       const n = Math.max(0, (Number(v) || 0) + delta)
       return String(n)
     })
@@ -108,6 +117,17 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
     updateStock(p.id, qty)
     const qtyStr = qty % 1 === 0 ? String(qty) : qty.toFixed(1)
     onToast(`Stock de ${p.name} actualizado a ${qtyStr} ${p.unit}`, 'success')
+  }
+
+  const handleSaveInitialStock = (p) => {
+    const qty = Number(initialStockInput)
+    if (!isFinite(qty) || qty < 0) {
+      onToast('Cantidad de stock inicial inválida', 'warn')
+      return
+    }
+    setInitialStock(p.id, qty)
+    const qtyStr = qty % 1 === 0 ? String(qty) : qty.toFixed(1)
+    onToast(`Stock inicial de ${p.name} actualizado a ${qtyStr} ${p.unit}`, 'success')
   }
 
   const handleSaveThreshold = (p) => {
@@ -290,6 +310,7 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
           const pct = Math.min(100, Math.max(0, (days / 14) * 100))
           const sc = STATUS[status]
           const currentStock = stock[p.id] ?? p.initialStock
+          const initialStock = getInitialStock(p.id)
           const t = thresholds?.[p.id]
           const hasCustom = t && !t.deleted
 
@@ -310,6 +331,9 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
                       style={{ width: `${pct}%` }}
                     />
                   </div>
+                  <p className="mt-1 text-[10px] font-mono text-text-muted">
+                    inicial: {initialStock % 1 === 0 ? initialStock : initialStock.toFixed(1)}
+                  </p>
                 </div>
                 <span className="font-mono text-sm text-right text-text-primary tabular-nums">
                   {currentStock % 1 === 0 ? currentStock : currentStock.toFixed(1)}
@@ -355,6 +379,43 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
                         rounded-lg text-xs active:opacity-90"
                     >
                       Guardar stock
+                    </button>
+
+                    <div className="h-px bg-border my-3" />
+
+                    <p className="text-[11px] font-mono text-text-muted uppercase tracking-wider mb-2">
+                      Editar stock inicial
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => stepInitialStock(-1)}
+                        className="w-9 h-9 shrink-0 rounded-lg bg-surface border border-border
+                          text-text-primary font-mono text-lg active:opacity-70"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number" inputMode="decimal" min="0"
+                        value={initialStockInput}
+                        onChange={e => setInitialStockInput(e.target.value)}
+                        className="flex-1 min-w-0 text-center bg-surface border border-border rounded-lg py-2
+                          text-text-primary font-mono text-lg tabular-nums focus:outline-none focus:border-accent-blue"
+                      />
+                      <button
+                        onClick={() => stepInitialStock(1)}
+                        className="w-9 h-9 shrink-0 rounded-lg bg-surface border border-border
+                          text-text-primary font-mono text-lg active:opacity-70"
+                      >
+                        +
+                      </button>
+                      <span className="text-[10px] font-mono text-text-muted w-14 shrink-0">{p.unit}</span>
+                    </div>
+                    <button
+                      onClick={() => handleSaveInitialStock(p)}
+                      className="w-full mt-2 py-1.5 bg-accent-blue text-bg font-ui font-bold
+                        rounded-lg text-xs active:opacity-90"
+                    >
+                      Guardar stock inicial
                     </button>
 
                     <div className="h-px bg-border my-3" />

@@ -164,6 +164,7 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
             product={p}
             productId={p.id}
             qty={quantities[p.id] || 0}
+            currentStock={stock[p.id] ?? p.initialStock}
             onIncrement={increment}
             onDecrement={decrement}
           />
