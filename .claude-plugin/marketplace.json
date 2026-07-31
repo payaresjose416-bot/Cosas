@@ -1,0 +1,11 @@
+{
+  "name": "cosas",
+  "owner": { "name": "José Payares" },
+  "plugins": [
+    {
+      "name": "bodega",
+      "source": "./plugins/bodega",
+      "description": "Consulta y registra el inventario de cafetería y aseo de Inversa-Coosalud desde Claude, usando el CLI 'bodega' de bodega-tracker."
+    }
+  ]
+}

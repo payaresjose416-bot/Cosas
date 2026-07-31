@@ -17,9 +17,15 @@ npm run lint      # eslint .
 npm run preview   # preview a production build
 ```
 
-There is no test suite configured in this project.
+```bash
+npm test          # node --test src/core — unit tests for the merge/reducer core
+```
 
 `.env` needs `VITE_ANTHROPIC_KEY` for the AI analysis feature (`useAI.js`); see `.env.example`. Without it, that one feature degrades gracefully with an error message — nothing else depends on it.
+
+### CLI (`cli/`)
+
+`bodega` (bin: `cli/bin/bodega.js`, `npm link` to install) is a terminal client for the same Supabase data the web app reads — read/write inventory, register consumption, adjust thresholds, run the Excel import/export, all without a browser. It has **no local state**: every command does a read-merge-write against Supabase (`cli/lib/store.js`), the same pattern `useSync.js` uses. Write commands show a preview and ask for confirmation unless `--yes` is passed; `--dry-run` never writes. See `plugins/bodega/skills/bodega/SKILL.md` for the Claude Code skill that drives this CLI, distributed as a plugin from the repo-root marketplace (`.claude-plugin/marketplace.json`).
 
 ## Architecture
 
@@ -29,6 +35,8 @@ There is no test suite configured in this project.
 
 - **`useProducts.js`** — merges the hardcoded `BASE_PRODUCTS` (from `utils/products.js`) with user-added custom products (`bodega_custom_products` in localStorage, synced to cloud key `custom_products`).
 - **`useInventory.js`** — owns `stock`, `history` (registered salidas/entradas), and `thresholds` (per-product critical/low levels). This is the most important file in the codebase; read it before changing any cross-device sync behavior.
+
+Both hooks are thin React wrappers: the actual merge/reducer/status logic lives in `src/core/` (`merge.js`, `inventory.js`, `status.js`, `catalog.js`) as plain functions with no React and no browser APIs, so the CLI (`cli/`) can import the exact same logic instead of re-implementing it. **Any change to sync/merge/status behavior belongs in `src/core/`, not in the hooks** — the hooks should only ever glue core functions to `useState`/`useEffect`. `src/core/__tests__/` covers this layer with `node:test`; run it after touching anything there.
 
 ### Cross-device sync — the core design constraint
 
