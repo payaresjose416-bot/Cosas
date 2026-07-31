@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { normalize } from '../utils/excelExport.js'
+
 const MONTHS_ES = [
   'ene','feb','mar','abr','may','jun',
   'jul','ago','sep','oct','nov','dic',
@@ -9,9 +12,19 @@ function formatDate(iso) {
 }
 
 export default function TabHistorial({ history, deleteDay, onToast, productMap, onEditEntry }) {
+  const [search, setSearch] = useState('')
+
   const sorted = [...history].sort((a, b) =>
     b.date.localeCompare(a.date) || ((a.type || 'salida') === 'entrada' ? -1 : 1)
   )
+
+  const searchQuery = normalize(search)
+  const filtered = !searchQuery ? sorted : sorted.filter(entry => entry.items.some(item => {
+    const product = productMap[item.id]
+    const name = normalize(product?.name ?? item.id)
+    if (name.includes(searchQuery)) return true
+    return (product?.keywords || []).some(k => normalize(k).includes(searchQuery))
+  }))
 
   const handleDelete = (entry) => {
     const entryType = entry.type || 'salida'
@@ -49,7 +62,23 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap, 
         </div>
       </div>
 
-      {sorted.map(entry => {
+      <input
+        type="text"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="Buscar producto..."
+        className="bg-surface border border-border rounded-xl px-3 py-2.5
+          text-text-primary font-mono text-sm placeholder:text-text-muted
+          focus:outline-none focus:border-accent-blue transition-colors"
+      />
+
+      {filtered.length === 0 && (
+        <p className="text-center text-text-muted text-sm font-ui py-8">
+          Sin registros para "{search}"
+        </p>
+      )}
+
+      {filtered.map(entry => {
         const isEntrada = (entry.type || 'salida') === 'entrada'
         return (
           <div
