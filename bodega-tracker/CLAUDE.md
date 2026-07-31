@@ -54,10 +54,12 @@ Practical implication: never bump `STOCK_VERSION` (in `utils/products.js`) to fo
 
 `utils/parser.js` is a separate, simpler matcher used for free-text quick-entry in the Registro tab (`"5 detergente 2 cloro"` style input) — keyword/bigram matching plus Levenshtein, independent of the Excel matching path.
 
+`initialStocks` follows the same override pattern as `thresholds`: a synced `{productId: {value, updatedAt}}` map (tombstone-deletable) that shadows the catalog's static `product.initialStock` when present. `getInitialStock(productId)` in `useInventory.js` resolves the override or falls back to the catalog value — this is what the Dashboard's "stock inicial" editor reads/writes via `setInitialStock`. It's purely a reference figure shown alongside current stock, not itself the seed for `stock` (that seeding already happened at `initStockEntries`/product-creation time).
+
 ### Tabs
 
-- **Registro** — free-text or manual entry of a day's salidas/entradas, calls `saveDay`.
-- **Dashboard** — per-product stock table with expandable rows; each row has manual stock +/-/input editing (`updateStock`) and a threshold editor (`setThreshold`), both writing through the same sync-safe hook functions.
+- **Registro** — free-text or manual entry of a day's salidas/entradas, calls `saveDay`. Each product card also shows its current stock for quick reference while registering.
+- **Dashboard** — per-product stock table with expandable rows; each row shows current + initial stock and has manual editors for both (`updateStock`, `setInitialStock`) plus a threshold editor (`setThreshold`), all writing through the same sync-safe hook functions.
 - **Historial** — lists past registered days, supports edit (routes back to Registro via `onEditEntry`) and delete (`deleteDay`, tombstoned).
 - **Exportar** — Excel import/export (writing consumption, syncing stock from Excel, detecting new products) and the Claude-powered inventory analysis (`useAI.js`).
 

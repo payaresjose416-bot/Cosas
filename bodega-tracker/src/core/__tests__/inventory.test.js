@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  applySaveDay, applyDeleteDay, applyUpdateStock, applySetThreshold, applyStockSyncChanges,
+  applySaveDay, applyDeleteDay, applyUpdateStock, applySetThreshold, applySetInitialStock, applyStockSyncChanges,
 } from '../inventory.js'
 
 test('applySaveDay: registra una salida nueva y descuenta stock', () => {
@@ -68,6 +68,19 @@ test('applyUpdateStock: fija stock a mano con updatedAt fresco y sin negativos',
   const stockEntries = { detergente: { qty: 5, updatedAt: 0 } }
   const next = applyUpdateStock(stockEntries, { productId: 'detergente', newQty: -3, now: 1000 })
   assert.equal(next.detergente.qty, 0)
+  assert.equal(next.detergente.updatedAt, 1000)
+})
+
+test('applySetInitialStock: fija el stock inicial con updatedAt fresco y sin negativos', () => {
+  const next = applySetInitialStock({}, { productId: 'detergente', value: -3, now: 1000 })
+  assert.equal(next.detergente.value, 0)
+  assert.equal(next.detergente.updatedAt, 1000)
+})
+
+test('applySetInitialStock: valor null crea un tombstone de borrado (vuelve al valor del catálogo)', () => {
+  const initialStocks = { detergente: { value: 10, updatedAt: 0 } }
+  const next = applySetInitialStock(initialStocks, { productId: 'detergente', value: null, now: 1000 })
+  assert.equal(next.detergente.deleted, true)
   assert.equal(next.detergente.updatedAt, 1000)
 })
 
