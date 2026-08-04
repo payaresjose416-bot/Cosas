@@ -4,7 +4,7 @@ import { useSync } from './useSync.js'
 import { toEntries, mergeStock, mergeThresholds, mergeHistory } from '../core/merge.js'
 import {
   historyForSaveDay, stockBumpForSaveDay, historyForDeleteDay, stockBumpForDeleteDay,
-  applyUpdateStock, applySetThreshold, applySetInitialStock, applyStockSyncChanges,
+  applyUpdateStock, applySetThreshold, applySetInitialStock, applyStockSyncChanges, historyForStockSync,
 } from '../core/inventory.js'
 import { getDaysRemaining as coreGetDaysRemaining, getStatus as coreGetStatus } from '../core/status.js'
 
@@ -188,6 +188,10 @@ export function useInventory(products, productMap) {
 
   const applyStockSync = useCallback((changes) => {
     setStockEntries(prev => applyStockSyncChanges(prev, changes))
+    if (changes.length > 0) {
+      const date = new Date().toISOString().slice(0, 10)
+      setRawHistory(prev => historyForStockSync(prev, { date, changes }))
+    }
   }, [])
 
   const updateStock = useCallback((productId, newQty) => {

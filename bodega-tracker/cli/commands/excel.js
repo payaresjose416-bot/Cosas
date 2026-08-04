@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import { writeToExcel } from '../../src/utils/excelExport.js'
 import { detectStockSync } from '../../src/utils/excelStockSync.js'
 import { detectNewProducts } from '../../src/utils/excelDetect.js'
-import { applyStockSyncChanges } from '../../src/core/inventory.js'
-import { loadProducts, loadHistory, loadStockEntries, saveStockEntries, flattenStock } from '../lib/store.js'
+import { applyStockSyncChanges, historyForStockSync } from '../../src/core/inventory.js'
+import { loadProducts, loadHistory, loadStockEntries, saveStockEntries, saveHistory, flattenStock } from '../lib/store.js'
 import { confirmWrite } from '../lib/confirm.js'
 import { printTable, printJSON, die } from '../lib/format.js'
 
@@ -71,9 +71,13 @@ async function syncStock(args) {
   })
   if (!proceed) return
 
-  const changes = existingChanges.map(c => ({ id: c.id, newStock: c.newStock }))
+  const changes = existingChanges.map(c => ({ id: c.id, oldStock: c.oldStock, newStock: c.newStock }))
   const nextStock = applyStockSyncChanges(stockEntries, changes)
   await saveStockEntries(nextStock)
+
+  const history = await loadHistory()
+  const date = new Date().toISOString().slice(0, 10)
+  await saveHistory(historyForStockSync(history, { date, changes }))
 
   if (values.json) printJSON({ ok: true, applied: existingChanges, newProducts })
   else console.log(`Aplicado: ${existingChanges.length} producto(s) actualizados.`)

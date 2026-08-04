@@ -28,10 +28,10 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap, 
 
   const handleDelete = (entry) => {
     const entryType = entry.type || 'salida'
-    const label = entryType === 'entrada' ? 'entrada' : 'registro'
+    const label = entryType === 'entrada' ? 'entrada' : entryType === 'sync' ? 'registro de sincronización' : 'registro'
     if (window.confirm(`Eliminar ${label} de ${formatDate(entry.date)}?`)) {
       deleteDay(entry.date, entryType)
-      onToast(`${entryType === 'entrada' ? 'Entrada' : 'Registro'} ${formatDate(entry.date)} eliminado`, 'warn')
+      onToast(`${entryType === 'entrada' ? 'Entrada' : entryType === 'sync' ? 'Sincronización' : 'Registro'} ${formatDate(entry.date)} eliminado`, 'warn')
     }
   }
 
@@ -47,7 +47,9 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap, 
     )
   }
 
-  const totalItems = sorted.reduce((s, h) => s + h.items.reduce((a, i) => a + i.qty, 0), 0)
+  const totalItems = sorted
+    .filter(h => (h.type || 'salida') !== 'sync')
+    .reduce((s, h) => s + h.items.reduce((a, i) => a + i.qty, 0), 0)
 
   return (
     <div className="flex flex-col gap-3 pb-4">
@@ -79,21 +81,23 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap, 
       )}
 
       {filtered.map(entry => {
-        const isEntrada = (entry.type || 'salida') === 'entrada'
+        const entryType = entry.type || 'salida'
+        const isEntrada = entryType === 'entrada'
+        const isSync = entryType === 'sync'
         return (
           <div
-            key={entry.date + (entry.type || 'salida')}
+            key={entry.date + entryType}
             className={`bg-surface border rounded-2xl overflow-hidden animate-fade-in
-              ${isEntrada ? 'border-accent-blue/30' : 'border-border'}`}
+              ${isEntrada ? 'border-accent-blue/30' : isSync ? 'border-accent-warn/30' : 'border-border'}`}
           >
             <div className={`flex items-center justify-between px-3 py-2.5 border-b
-              ${isEntrada ? 'border-accent-blue/20' : 'border-border'}`}
+              ${isEntrada ? 'border-accent-blue/20' : isSync ? 'border-accent-warn/20' : 'border-border'}`}
             >
               <div className="flex items-center gap-2">
                 <span className={`font-mono text-sm font-bold
-                  ${isEntrada ? 'text-accent-blue' : 'text-accent-green'}`}
+                  ${isEntrada ? 'text-accent-blue' : isSync ? 'text-accent-warn' : 'text-accent-green'}`}
                 >
-                  {isEntrada ? '↑ ' : ''}{formatDate(entry.date)}
+                  {isEntrada ? '↑ ' : isSync ? '⟳ ' : ''}{formatDate(entry.date)}
                 </span>
                 {isEntrada && (
                   <span className="text-[10px] font-ui font-bold text-accent-blue
@@ -101,17 +105,27 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap, 
                     ENTRADA
                   </span>
                 )}
+                {isSync && (
+                  <span className="text-[10px] font-ui font-bold text-accent-warn
+                    bg-accent-warn/10 px-2 py-0.5 rounded-full">
+                    SYNC EXCEL
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-text-muted font-mono">
-                  {entry.items.reduce((s, i) => s + i.qty, 0)} uds
-                </span>
-                <button
-                  onClick={() => onEditEntry(entry)}
-                  className="text-xs text-accent-blue font-ui active:opacity-70"
-                >
-                  Editar
-                </button>
+                {!isSync && (
+                  <span className="text-xs text-text-muted font-mono">
+                    {entry.items.reduce((s, i) => s + i.qty, 0)} uds
+                  </span>
+                )}
+                {!isSync && (
+                  <button
+                    onClick={() => onEditEntry(entry)}
+                    className="text-xs text-accent-blue font-ui active:opacity-70"
+                  >
+                    Editar
+                  </button>
+                )}
                 <button
                   onClick={() => handleDelete(entry)}
                   className="text-xs text-accent-danger font-ui active:opacity-70"
@@ -123,6 +137,19 @@ export default function TabHistorial({ history, deleteDay, onToast, productMap, 
             <div className="px-3 py-2 space-y-1.5">
               {entry.items.map(item => {
                 const product = productMap[item.id]
+                if (isSync) {
+                  return (
+                    <div key={item.id} className="flex justify-between items-center text-sm">
+                      <span className="text-text-muted font-ui">
+                        {product?.name ?? item.id}
+                      </span>
+                      <span className="font-mono tabular-nums text-accent-warn">
+                        {item.oldStock} → {item.newStock}{' '}
+                        <span className="text-text-muted text-xs">{product?.unit}</span>
+                      </span>
+                    </div>
+                  )
+                }
                 return (
                   <div key={item.id} className="flex justify-between items-center text-sm">
                     <span className="text-text-muted font-ui">

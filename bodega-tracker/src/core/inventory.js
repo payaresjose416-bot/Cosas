@@ -57,10 +57,14 @@ export function historyForDeleteDay(rawHistory, { date, type = 'salida', now = D
 
 export function stockBumpForDeleteDay(stockEntries, { entry, now = Date.now() }) {
   if (!entry || entry.deleted) return stockEntries
+  const type = entry.type || 'salida'
+  // Los registros de tipo 'sync' son solo bitácora (ver historyForStockSync) —
+  // no representan un movimiento de stock propio, así que no hay nada que revertir.
+  if (type !== 'salida' && type !== 'entrada') return stockEntries
   const next = { ...stockEntries }
   for (const item of entry.items) {
     const cur = next[item.id]?.qty ?? 0
-    const delta = (entry.type || 'salida') === 'salida' ? item.qty : -item.qty
+    const delta = type === 'salida' ? item.qty : -item.qty
     next[item.id] = { qty: Math.max(0, cur + delta), updatedAt: now }
   }
   return next
@@ -105,4 +109,21 @@ export function applyStockSyncChanges(stockEntries, changes, now = Date.now()) {
   const next = { ...stockEntries }
   for (const { id, newStock } of changes) next[id] = { qty: newStock, updatedAt: now }
   return next
+}
+
+// Deja en el Historial un registro auditable de cada sincronización de Excel —
+// no mueve stock (eso ya lo hizo applyStockSyncChanges), solo documenta el
+// oldStock -> newStock que se aplicó y cuándo, para poder rastrear de dónde
+// salió un número de stock cuando no coincide con el conteo físico.
+// Igual que historyForSaveDay: un solo registro 'sync' por fecha — si ya se
+// sincronizó ese día, el nuevo diff reemplaza (no se apila) al anterior.
+export function historyForStockSync(rawHistory, { date, changes, now = Date.now() }) {
+  const filtered = rawHistory.filter(h => !(h.date === date && h.type === 'sync'))
+  const entry = {
+    date,
+    type: 'sync',
+    items: changes.map(({ id, oldStock, newStock }) => ({ id, oldStock, newStock })),
+    updatedAt: now,
+  }
+  return [...filtered, entry].sort((a, b) => a.date.localeCompare(b.date))
 }

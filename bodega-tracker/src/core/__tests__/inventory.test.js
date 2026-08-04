@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   applySaveDay, applyDeleteDay, applyUpdateStock, applySetThreshold, applySetInitialStock, applyStockSyncChanges,
+  historyForStockSync, stockBumpForDeleteDay,
 } from '../inventory.js'
 
 test('applySaveDay: registra una salida nueva y descuenta stock', () => {
@@ -103,4 +104,34 @@ test('applyStockSyncChanges: aplica solo los productos incluidos en el diff del 
   assert.equal(next.a.qty, 9)
   assert.equal(next.a.updatedAt, 1000)
   assert.equal(next.b.qty, 2) // no tocado
+})
+
+test('historyForStockSync: deja un registro auditable de tipo sync con old/newStock por producto', () => {
+  const next = historyForStockSync([], {
+    date: '2026-06-28',
+    changes: [{ id: 'azucar', oldStock: 0, newStock: 4 }],
+    now: 1000,
+  })
+  assert.equal(next.length, 1)
+  assert.equal(next[0].type, 'sync')
+  assert.equal(next[0].items[0].oldStock, 0)
+  assert.equal(next[0].items[0].newStock, 4)
+})
+
+test('historyForStockSync: una segunda sincronización el mismo día reemplaza (no apila) la anterior', () => {
+  const first = historyForStockSync([], {
+    date: '2026-06-28', changes: [{ id: 'azucar', oldStock: 0, newStock: 4 }], now: 1000,
+  })
+  const second = historyForStockSync(first, {
+    date: '2026-06-28', changes: [{ id: 'azucar', oldStock: 4, newStock: 6 }], now: 2000,
+  })
+  assert.equal(second.length, 1)
+  assert.equal(second[0].items[0].newStock, 6)
+})
+
+test('stockBumpForDeleteDay: un registro sync no revierte stock al borrarse (es solo bitácora)', () => {
+  const stockEntries = { azucar: { qty: 4, updatedAt: 1000 } }
+  const entry = { date: '2026-06-28', type: 'sync', items: [{ id: 'azucar', oldStock: 0, newStock: 4 }] }
+  const next = stockBumpForDeleteDay(stockEntries, { entry, now: 2000 })
+  assert.equal(next.azucar.qty, 4) // sin cambios
 })

@@ -149,7 +149,7 @@ export default function TabExportar({ history, stock, onToast, products, addProd
     const newToAdd = stockSyncResult.newProducts.filter(n => selectedStockNew.has(n.name))
 
     if (changesToApply.length > 0) {
-      applyStockSync(changesToApply.map(({ id, newStock }) => ({ id, newStock })))
+      applyStockSync(changesToApply.map(({ id, oldStock, newStock }) => ({ id, oldStock, newStock })))
     }
     if (newToAdd.length > 0) {
       addProducts(newToAdd)
