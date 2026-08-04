@@ -45,14 +45,14 @@ test('getStatus: con umbral explícito, compara stock actual contra critical/low
 })
 
 test('getStatus: umbral tombstoneado (deleted) se ignora y cae al cálculo por días', () => {
-  const stock = { detergente: 1 } // 1/0.5 = 2 días => critical
+  const stock = { detergente: 3 } // 3/0.5 = 6 días => critical
   const thresholds = { detergente: { deleted: true } }
   assert.equal(getStatus('detergente', { stock, history: [], thresholds, productMap }), 'critical')
 })
 
-test('getStatus: sin umbral, usa el corte por días (< 3 crítico, < 7 bajo, resto ok)', () => {
+test('getStatus: sin umbral, usa el corte por días (< 7 crítico, < 15 bajo, resto ok)', () => {
   const pm = { x: { id: 'x', initialStock: 100, dailyRate: 1 } }
-  assert.equal(getStatus('x', { stock: { x: 2 }, history: [], thresholds: {}, productMap: pm }), 'critical')
-  assert.equal(getStatus('x', { stock: { x: 5 }, history: [], thresholds: {}, productMap: pm }), 'low')
+  assert.equal(getStatus('x', { stock: { x: 5 }, history: [], thresholds: {}, productMap: pm }), 'critical')
+  assert.equal(getStatus('x', { stock: { x: 10 }, history: [], thresholds: {}, productMap: pm }), 'low')
   assert.equal(getStatus('x', { stock: { x: 20 }, history: [], thresholds: {}, productMap: pm }), 'ok')
 })

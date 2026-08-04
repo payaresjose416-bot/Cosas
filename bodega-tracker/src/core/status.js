@@ -27,8 +27,9 @@ export function getStatus(productId, { stock, history, thresholds, productMap, l
     if (currentStock <= t.low) return 'low'
     return 'ok'
   }
+  // Ciclo de pedido mensual: umbrales escalados desde el antiguo ciclo de 14 días (crítico <3, bajo <7).
   const days = getDaysRemaining(productId, { stock, history, productMap, lookback })
-  if (days < 3) return 'critical'
-  if (days < 7) return 'low'
+  if (days < 7) return 'critical'
+  if (days < 15) return 'low'
   return 'ok'
 }

@@ -194,9 +194,13 @@ export function useInventory(products, productMap) {
     setStockEntries(prev => applyUpdateStock(prev, { productId, newQty }))
   }, [])
 
+  const getStockUpdatedAt = useCallback((productId) =>
+    stockEntries[productId]?.updatedAt || 0,
+  [stockEntries])
+
   return {
     stock, history, saveDay, deleteDay, getDaysRemaining, getStatus,
     applyStockSync, thresholds, setThreshold, updateStock,
-    initialStocks, getInitialStock, setInitialStock,
+    initialStocks, getInitialStock, setInitialStock, getStockUpdatedAt,
   }
 }
