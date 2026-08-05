@@ -1,10 +1,10 @@
 import { parseArgs } from 'node:util'
 import fs from 'node:fs'
 import { writeToExcel } from '../../src/utils/excelExport.js'
-import { detectStockSync } from '../../src/utils/excelStockSync.js'
+import { detectInitialStockSync } from '../../src/utils/excelStockSync.js'
 import { detectNewProducts } from '../../src/utils/excelDetect.js'
-import { applyStockSyncChanges, historyForStockSync } from '../../src/core/inventory.js'
-import { loadProducts, loadHistory, loadStockEntries, saveStockEntries, saveHistory, flattenStock } from '../lib/store.js'
+import { applySetInitialStock } from '../../src/core/inventory.js'
+import { loadProducts, loadHistory, loadInitialStocks, saveInitialStocks, flattenInitialStocks } from '../lib/store.js'
 import { confirmWrite } from '../lib/confirm.js'
 import { printTable, printJSON, die } from '../lib/format.js'
 
@@ -34,6 +34,9 @@ async function exportar(args) {
   if (unmatched.length) console.log(`Productos sin match en el Excel: ${unmatched.join(', ')}`)
 }
 
+// El Excel corporativo nunca sobrescribe el stock actual (eso lo calcula la
+// app sola con lo registrado vía `bodega registrar`) — solo trae nombres de
+// producto y el valor de referencia "Stock inicial".
 async function syncStock(args) {
   const { values, positionals } = parseArgs({
     args,
@@ -45,19 +48,19 @@ async function syncStock(args) {
 
   const buf = readFile(filePath)
   const { products } = await loadProducts()
-  const stockEntries = await loadStockEntries()
-  const stockMap = flattenStock(stockEntries, products)
+  const initialStocks = await loadInitialStocks()
+  const initialStockMap = flattenInitialStocks(initialStocks, products)
 
   const {
-    existingChanges, newProducts, skipped, stockColLetter, stockColHeader,
+    existingChanges, newProducts, skipped, initialColLetter, initialColHeader,
     nameColLetter, nameColHeader, rowsScanned, rowsWithName,
-  } = detectStockSync(buf, products, stockMap)
+  } = detectInitialStockSync(buf, products, initialStockMap)
 
-  // Los saltados son el fallo silencioso que más duele: su stock queda sin
-  // corregir y el dashboard sigue mostrando un número viejo. Siempre avisarlos.
+  // Los saltados son el fallo silencioso que más duele: su stock inicial queda
+  // sin corregir y el dashboard sigue mostrando un número viejo. Siempre avisarlos.
   const warnSkipped = () => {
     if (!skipped.length) return
-    console.error(`\n${skipped.length} producto(s) NO se pudieron leer (su stock queda sin corregir):`)
+    console.error(`\n${skipped.length} producto(s) NO se pudieron leer (su stock inicial queda sin corregir):`)
     printTable(['PRODUCTO', 'MOTIVO'], skipped.map(s => [s.name, s.reason]))
     if (skipped.some(s => s.reason === 'formula-sin-valor')) {
       console.error('Sugerencia: abre el Excel en Excel/Sheets y guárdalo de nuevo para que queden los valores calculados.')
@@ -68,15 +71,15 @@ async function syncStock(args) {
     if (values.json) {
       printJSON({
         ok: true, existingChanges: [], newProducts, skipped,
-        stockColLetter, stockColHeader, nameColLetter, nameColHeader, rowsScanned, rowsWithName,
+        initialColLetter, initialColHeader, nameColLetter, nameColHeader, rowsScanned, rowsWithName,
       })
     } else {
-      console.log(`Columna de stock: ${stockColLetter} ("${stockColHeader}") · columna de nombre: ${nameColLetter}${nameColHeader ? ` ("${nameColHeader}")` : ' (por defecto, sin encabezado detectado)'}`)
+      console.log(`Columna de stock inicial: ${initialColLetter} ("${initialColHeader}") · columna de nombre: ${nameColLetter}${nameColHeader ? ` ("${nameColHeader}")` : ' (por defecto, sin encabezado detectado)'}`)
       console.log(`${rowsScanned} fila(s) revisadas, ${rowsWithName} con nombre de producto.`)
       if (rowsWithName === 0) {
         console.log(`Ningún nombre de producto se leyó en la columna ${nameColLetter} — probablemente los nombres están en otra columna en este archivo.`)
       } else {
-        console.log('No hay cambios de stock que aplicar.')
+        console.log('No hay cambios de stock inicial que aplicar.')
       }
       if (newProducts.length) console.log(`Productos nuevos en el Excel (no en el catálogo): ${newProducts.map(p => p.name).join(', ')}`)
       warnSkipped()
@@ -85,28 +88,26 @@ async function syncStock(args) {
   }
 
   const preview = () => {
-    console.error(`Cambios de stock detectados en el Excel (columna ${stockColLetter} — "${stockColHeader}"):`)
-    printTable(['PRODUCTO', 'ANTES', 'DESPUÉS'], existingChanges.map(c => [c.name, c.oldStock, c.newStock]))
+    console.error(`Cambios de stock inicial detectados en el Excel (columna ${initialColLetter} — "${initialColHeader}"). Esto NO toca el stock actual:`)
+    printTable(['PRODUCTO', 'ANTES', 'DESPUÉS'], existingChanges.map(c => [c.name, c.oldInitial, c.newInitial]))
     if (newProducts.length) console.error(`\n(${newProducts.length} producto(s) nuevos en el Excel, sin match en el catálogo — usa "bodega producto-nuevo" para agregarlos)`)
     warnSkipped()
   }
 
   const proceed = await confirmWrite({
     preview, dryRun: values['dry-run'], yes: values.yes,
-    actionLabel: 'Aplicar estos cambios de stock',
+    actionLabel: 'Aplicar este stock inicial',
   })
   if (!proceed) return
 
-  const changes = existingChanges.map(c => ({ id: c.id, oldStock: c.oldStock, newStock: c.newStock }))
-  const nextStock = applyStockSyncChanges(stockEntries, changes)
-  await saveStockEntries(nextStock)
-
-  const history = await loadHistory()
-  const date = new Date().toISOString().slice(0, 10)
-  await saveHistory(historyForStockSync(history, { date, changes }))
+  let nextInitialStocks = initialStocks
+  for (const c of existingChanges) {
+    nextInitialStocks = applySetInitialStock(nextInitialStocks, { productId: c.id, value: c.newInitial })
+  }
+  await saveInitialStocks(nextInitialStocks)
 
   if (values.json) printJSON({ ok: true, applied: existingChanges, newProducts, skipped })
-  else console.log(`Aplicado: ${existingChanges.length} producto(s) actualizados.`)
+  else console.log(`Aplicado: ${existingChanges.length} producto(s) actualizados (solo stock inicial).`)
 }
 
 async function detectar(args) {

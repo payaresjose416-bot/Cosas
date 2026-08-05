@@ -58,7 +58,8 @@ export function historyForDeleteDay(rawHistory, { date, type = 'salida', now = D
 export function stockBumpForDeleteDay(stockEntries, { entry, now = Date.now() }) {
   if (!entry || entry.deleted) return stockEntries
   const type = entry.type || 'salida'
-  // Los registros de tipo 'sync' son solo bitácora (ver historyForStockSync) —
+  // Registros heredados de tipo 'sync' (de una versión anterior de la app que
+  // sincronizaba el stock actual desde Excel, ya retirada) son solo bitácora —
   // no representan un movimiento de stock propio, así que no hay nada que revertir.
   if (type !== 'salida' && type !== 'entrada') return stockEntries
   const next = { ...stockEntries }
@@ -101,29 +102,4 @@ export function applySetThreshold(thresholds, { productId, value, now = Date.now
     updatedAt: now,
   }
   return next
-}
-
-// `changes` es [{ id, newStock }], tal como lo produce detectStockSync
-// (src/utils/excelStockSync.js).
-export function applyStockSyncChanges(stockEntries, changes, now = Date.now()) {
-  const next = { ...stockEntries }
-  for (const { id, newStock } of changes) next[id] = { qty: newStock, updatedAt: now }
-  return next
-}
-
-// Deja en el Historial un registro auditable de cada sincronización de Excel —
-// no mueve stock (eso ya lo hizo applyStockSyncChanges), solo documenta el
-// oldStock -> newStock que se aplicó y cuándo, para poder rastrear de dónde
-// salió un número de stock cuando no coincide con el conteo físico.
-// Igual que historyForSaveDay: un solo registro 'sync' por fecha — si ya se
-// sincronizó ese día, el nuevo diff reemplaza (no se apila) al anterior.
-export function historyForStockSync(rawHistory, { date, changes, now = Date.now() }) {
-  const filtered = rawHistory.filter(h => !(h.date === date && h.type === 'sync'))
-  const entry = {
-    date,
-    type: 'sync',
-    items: changes.map(({ id, oldStock, newStock }) => ({ id, oldStock, newStock })),
-    updatedAt: now,
-  }
-  return [...filtered, entry].sort((a, b) => a.date.localeCompare(b.date))
 }

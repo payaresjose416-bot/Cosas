@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { detectStockSync } from '../../utils/excelStockSync.js'
+import { detectInitialStockSync } from '../../utils/excelStockSync.js'
 
 const products = [
   { id: 'azucar', name: 'Azúcar Manuelita x200 Sobres', excelNames: ['azucar manuelita', 'azucar'], initialStock: 0 },
@@ -17,58 +17,60 @@ function makeBuffer(rows, sheetName = 'Matriz de Consumo (2)') {
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
 }
 
-test('detectStockSync: encuentra la columna de restantes por encabezado y produce el diff', () => {
+test('detectInitialStockSync: encuentra la columna "Stock inicial" por encabezado y produce el diff', () => {
   const rows = [
     [],
     ['#', 'Producto', 'Stock inicial', '', '', '', 'Restantes'],
-    [1, 'AZUCAR MANUELITA X 200 SOBRES', 10, '', '', '', 5],
-    [2, 'DETERGENTE MULTI NEUTRO', 10, '', '', '', 10],
+    [1, 'AZUCAR MANUELITA X 200 SOBRES', 5, '', '', '', 0],
+    [2, 'DETERGENTE MULTI NEUTRO', 10, '', '', '', 3],
   ]
   const buf = makeBuffer(rows)
-  const result = detectStockSync(buf, products, { azucar: 0, detergente: 10 })
+  // El stock actual de la app (0 y 10) es irrelevante para esta función — ni
+  // siquiera se le pasa. Solo compara contra el "stock inicial" ya guardado.
+  const result = detectInitialStockSync(buf, products, { azucar: 0, detergente: 10 })
 
-  assert.equal(result.stockColHeader, 'Restantes')
+  assert.equal(result.initialColHeader, 'Stock inicial')
   assert.equal(result.existingChanges.length, 1)
   assert.equal(result.existingChanges[0].id, 'azucar')
-  assert.equal(result.existingChanges[0].oldStock, 0)
-  assert.equal(result.existingChanges[0].newStock, 5)
+  assert.equal(result.existingChanges[0].oldInitial, 0)
+  assert.equal(result.existingChanges[0].newInitial, 5)
+  // Detergente: 10 (Excel) === 10 (app) -> sin cambio, aunque Restantes diga 3.
+  // La columna Restantes NUNCA se lee para esto.
 })
 
-test('detectStockSync: nunca toma una columna que diga "stock inicial" como columna de cierre', () => {
-  // Ninguna columna dice "restante" — solo hay "stock inicial". No debe
-  // confundirla y usarla como si fuera el cierre del ciclo.
+test('detectInitialStockSync: si no hay ninguna columna "Stock inicial", falla con error claro', () => {
   const rows = [
     [],
-    ['#', 'Producto', 'Stock inicial'],
-    [1, 'AZUCAR MANUELITA X 200 SOBRES', 10],
+    ['#', 'Producto', 'Restantes'],
+    [1, 'AZUCAR MANUELITA X 200 SOBRES', 5],
   ]
   const buf = makeBuffer(rows)
-  assert.throws(() => detectStockSync(buf, products, {}), /No se encontró una columna de stock/)
+  assert.throws(() => detectInitialStockSync(buf, products, {}), /No se encontró la columna "Stock inicial"/)
 })
 
-test('detectStockSync: encuentra el nombre por encabezado aunque no sea la columna B', () => {
+test('detectInitialStockSync: encuentra el nombre por encabezado aunque no sea la columna B', () => {
   const rows = [
-    ['Artículo', 'Categoría', 'Restantes'], // nombre en columna A, no B
+    ['Artículo', 'Categoría', 'Stock inicial'], // nombre en columna A, no B
     [],
     ['AZUCAR MANUELITA X 200 SOBRES', 'Cafeteria', 3],
   ]
   const buf = makeBuffer(rows)
-  const result = detectStockSync(buf, products, { azucar: 0 })
+  const result = detectInitialStockSync(buf, products, { azucar: 0 })
 
   assert.equal(result.nameColLetter, 'A')
   assert.equal(result.rowsWithName, 1)
-  assert.equal(result.existingChanges[0].newStock, 3)
+  assert.equal(result.existingChanges[0].newInitial, 3)
 })
 
-test('detectStockSync: si el nombre real vive en otra columna que B y no hay encabezado reconocible, reporta 0 filas con nombre en vez de fallar en silencio', () => {
+test('detectInitialStockSync: si el nombre real vive en otra columna que B y no hay encabezado reconocible, reporta 0 filas con nombre en vez de fallar en silencio', () => {
   const rows = [
     [],
-    ['#', 'X', 'Y', 'Restantes'],
+    ['#', 'X', 'Y', 'Stock inicial'],
     // el nombre real está en la columna A, la app sigue mirando B (fallback)
     ['AZUCAR MANUELITA X 200 SOBRES', '', '', 5],
   ]
   const buf = makeBuffer(rows)
-  const result = detectStockSync(buf, products, {})
+  const result = detectInitialStockSync(buf, products, {})
 
   assert.equal(result.nameColLetter, 'B') // fallback, sin encabezado reconocido
   assert.equal(result.rowsWithName, 0)
@@ -84,7 +86,7 @@ test('detectStockSync: si el nombre real vive en otra columna que B y no hay enc
 // 'descripcion' antes que 'nombre' en la prioridad, la app tomaba la columna
 // de unidades como si fuera el nombre, y como muchos productos comparten
 // unidad, la deduplicación por nombre colapsaba ~30 productos en 6 filas.
-test('detectStockSync: layout real corporativo — "Nombre" gana sobre "Descripcion" (que es la unidad) e "ID de producto" no se confunde con nombre', () => {
+test('detectInitialStockSync: layout real corporativo — "Nombre" gana sobre "Descripcion" (que es la unidad) e "ID de producto" no se confunde con nombre', () => {
   const rows = [
     ['INFORMACION DEL PRODUCTO', '', '', 'CONSUMO DIARIO'],
     ['ID de producto', 'Nombre', 'Descripcion', 'Stock inicial', 'Suministrado a', '', '', 'Restantes'],
@@ -100,17 +102,14 @@ test('detectStockSync: layout real corporativo — "Nombre" gana sobre "Descripc
     { id: 'aromatica_frutos', name: 'Aromática Frutos Rojos', excelNames: ['frutos rojos'], initialStock: 1 },
   ]
   const buf = makeBuffer(rows)
-  const result = detectStockSync(buf, catalogo, {
-    ambientador: 3, aromatica_manz: 6, aromatica_yerba: 4, aromatica_frutos: 6,
+  const result = detectInitialStockSync(buf, catalogo, {
+    ambientador: 3, aromatica_manz: 6, aromatica_yerba: 2, aromatica_frutos: 6,
   })
 
   assert.equal(result.nameColHeader, 'Nombre')
   assert.equal(result.rowsWithName, 4)
   assert.equal(result.newProducts.length, 0) // ninguno cayó como "producto nuevo" por leer la unidad
-  // yerbabuena es el único con cambio real (4 -> 0); el resto ya coincidía
-  assert.equal(result.existingChanges.length, 1)
-  assert.equal(result.existingChanges[0].id, 'aromatica_yerba')
-  assert.equal(result.existingChanges[0].newStock, 0)
+  assert.equal(result.existingChanges.length, 0) // todos los "stock inicial" ya coincidían
 })
 
 // El caso reportado tras el fix anterior: una columna de código numérico con
@@ -118,15 +117,15 @@ test('detectStockSync: layout real corporativo — "Nombre" gana sobre "Descripc
 // códigos, no a nombres!) y el panel terminaba mostrando "1696", "2488"...
 // como si fueran productos. 'item' ya no es palabra clave, y aunque lo fuera,
 // la validación de contenido (mayoría de texto, no números) la descartaría.
-test('detectStockSync: una columna de código numérico con encabezado ambiguo no se confunde con la de nombre', () => {
+test('detectInitialStockSync: una columna de código numérico con encabezado ambiguo no se confunde con la de nombre', () => {
   const rows = [
     [],
-    ['Item', 'Descripción', 'Restantes'],
+    ['Item', 'Descripción', 'Stock inicial'],
     [1696, 'AZUCAR MANUELITA X 200 SOBRES', 5],
     [2488, 'DETERGENTE MULTI NEUTRO', 10],
   ]
   const buf = makeBuffer(rows)
-  const result = detectStockSync(buf, products, { azucar: 0, detergente: 10 })
+  const result = detectInitialStockSync(buf, products, { azucar: 0, detergente: 10 })
 
   assert.equal(result.nameColHeader, 'Descripción')
   assert.equal(result.existingChanges.length, 1)
@@ -138,14 +137,14 @@ test('detectStockSync: una columna de código numérico con encabezado ambiguo n
 // algo como "Insumo", que no está en la lista) y la única candidata que
 // matchea por palabra es numérica, debe descartarla y caer al fallback (B) en
 // vez de quedarse con la columna de códigos.
-test('detectStockSync: si la única columna que matchea por header es numérica, cae al fallback en vez de usarla', () => {
+test('detectInitialStockSync: si la única columna que matchea por header es numérica, cae al fallback en vez de usarla', () => {
   const rows = [
     [],
-    ['Elemento', 'Insumo', 'Restantes'], // 'Elemento' es el código (numérico), 'Insumo' no matchea ninguna keyword
+    ['Elemento', 'Insumo', 'Stock inicial'], // 'Elemento' es el código (numérico), 'Insumo' no matchea ninguna keyword
     [1696, 'AZUCAR MANUELITA X 200 SOBRES', 5],
   ]
   const buf = makeBuffer(rows)
-  const result = detectStockSync(buf, products, { azucar: 0 })
+  const result = detectInitialStockSync(buf, products, { azucar: 0 })
 
   assert.equal(result.nameColLetter, 'B') // fallback: la columna A ("Elemento") es numérica, se descarta
 })

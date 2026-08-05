@@ -3,24 +3,12 @@ import { normalize, matchProduct } from './excelExport.js'
 
 const SHEET_NAME = 'Matriz de Consumo (2)'
 
-// La columna que buscamos es la de RESTANTES — el saldo al cierre del ciclo,
-// que es el conteo físico real. NO la de stock inicial (con la que arranca el
-// ciclo), que en la matriz corporativa vive en una columna aparte y mucho más
-// a la izquierda.
-const STOCK_HEADER_KEYWORDS = [
-  'restante',
-  'saldo',
-  'stock actual',
-  'cantidad actual',
-  'existencia',
-  'disponible',
-]
-
-// Si el encabezado que matcheó también dice "inicial" (u otra señal de que es
-// el arranque del ciclo, no el cierre), no es la columna que queremos: tomarla
-// haría que el dashboard mostrara el stock con el que empezó el mes en vez del
-// que queda hoy.
-const NOT_CLOSING_STOCK_KEYWORDS = ['inicial', 'ingreso', 'compra', 'entrada']
+// El Excel corporativo NUNCA es la fuente del stock actual — eso lo calcula la
+// app sola, descontando cada salida/entrada registrada. Lo único que se trae
+// del Excel es (1) qué productos existen y (2) el "Stock inicial" con el que
+// arrancó el ciclo actual, que alimenta el valor de referencia "inicial: N"
+// del Dashboard — nunca el stock que se sigue moviendo con los registros.
+const INITIAL_STOCK_HEADER_KEYWORDS = ['stock inicial', 'inicial']
 
 // Igual que con la columna de stock: el nombre del producto no siempre cae en
 // la columna B — la anchura del ciclo (y con ella, cuántas columnas de fecha
@@ -89,8 +77,8 @@ function findHeaderColumn(ws, range, keywords, { exclude = [], validate } = {}) 
   return { col: -1, header: null }
 }
 
-function findStockColumn(ws, range) {
-  return findHeaderColumn(ws, range, STOCK_HEADER_KEYWORDS, { exclude: NOT_CLOSING_STOCK_KEYWORDS })
+function findInitialStockColumn(ws, range) {
+  return findHeaderColumn(ws, range, INITIAL_STOCK_HEADER_KEYWORDS)
 }
 
 function findNameColumn(ws, range) {
@@ -100,10 +88,8 @@ function findNameColumn(ws, range) {
   return { col: DEFAULT_NAME_COL, header: null }
 }
 
-// Las columnas calculadas (Restantes = inicial − consumos) suelen ser fórmulas.
-// Un .xlsx escrito por un script (openpyxl) guarda la fórmula pero NO su valor
-// cacheado, así que cell.v viene vacío aunque Excel muestre un número. Sin este
-// fallback esos productos se saltaban en silencio y su stock nunca se corregía.
+// La columna de Stock inicial puede tener fórmula (poco común, pero por si
+// acaso) o venir como texto formateado en vez de número puro.
 export function readStockValue(cell) {
   if (!cell) return { value: null, reason: 'celda-vacia' }
   if (typeof cell.v === 'number') return { value: cell.v, reason: null }
@@ -117,7 +103,12 @@ export function readStockValue(cell) {
   return { value: null, reason: 'no-numerico' }
 }
 
-export function detectStockSync(fileBuffer, products, stockMap) {
+// Lee del Excel corporativo SOLO nombres de producto + Stock inicial. Nunca
+// toca (ni siquiera lee para comparar) el stock actual/restantes — ese lo
+// calcula la app sola con lo registrado en Registro. `initialStockMap` es
+// `{ productId: valorInicialActualEnLaApp }`, solo para poder mostrar el
+// diff antes/después en el panel de revisión.
+export function detectInitialStockSync(fileBuffer, products, initialStockMap) {
   const workbook = XLSX.read(new Uint8Array(fileBuffer), { type: 'array' })
 
   if (!workbook.SheetNames.includes(SHEET_NAME)) {
@@ -127,12 +118,11 @@ export function detectStockSync(fileBuffer, products, stockMap) {
   const ws = workbook.Sheets[SHEET_NAME]
   const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
 
-  const { col: stockCol, header: stockColHeader } = findStockColumn(ws, range)
-  if (stockCol === -1) {
+  const { col: initialCol, header: initialColHeader } = findInitialStockColumn(ws, range)
+  if (initialCol === -1) {
     throw new Error(
-      'No se encontró una columna de stock en el Excel (se buscó un encabezado ' +
-      'como "Restantes", "Saldo", "Stock actual" o "Existencia" en las primeras ' +
-      `${MAX_HEADER_ROW + 1} filas). Verifica el archivo.`
+      'No se encontró la columna "Stock inicial" en el Excel (se buscó ese ' +
+      `encabezado en las primeras ${MAX_HEADER_ROW + 1} filas). Verifica el archivo.`
     )
   }
 
@@ -155,29 +145,29 @@ export function detectStockSync(fileBuffer, products, stockMap) {
     rowsWithName++
     seen.add(norm)
 
-    const stockCell = ws[XLSX.utils.encode_cell({ r, c: stockCol })]
-    const { value: newStock, reason } = readStockValue(stockCell)
+    const initialCell = ws[XLSX.utils.encode_cell({ r, c: initialCol })]
+    const { value: newInitial, reason } = readStockValue(initialCell)
     const productId = matchProduct(raw, products)
 
-    if (newStock == null) {
+    if (newInitial == null) {
       skipped.push({ name: raw, reason, matched: Boolean(productId) })
       continue
     }
 
     if (productId) {
       const product = products.find(p => p.id === productId)
-      const oldStock = stockMap[productId] ?? product.initialStock ?? 0
-      if (oldStock !== newStock) {
-        existingChanges.push({ id: productId, name: product.name, oldStock, newStock })
+      const oldInitial = initialStockMap[productId] ?? product.initialStock ?? 0
+      if (oldInitial !== newInitial) {
+        existingChanges.push({ id: productId, name: product.name, oldInitial, newInitial })
       }
     } else {
-      newProducts.push({ name: raw, stock: newStock })
+      newProducts.push({ name: raw, stock: newInitial })
     }
   }
 
   return {
-    stockColLetter: XLSX.utils.encode_col(stockCol),
-    stockColHeader,
+    initialColLetter: XLSX.utils.encode_col(initialCol),
+    initialColHeader,
     nameColLetter: XLSX.utils.encode_col(nameCol),
     nameColHeader,
     existingChanges,
