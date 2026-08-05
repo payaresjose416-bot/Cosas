@@ -348,13 +348,20 @@ export default function TabExportar({ history, stock, onToast, products, addProd
 
         {/* Sync stock button */}
         {excelBuffer && (
-          <button
-            onClick={handleReviewStockSync}
-            className="w-full py-2.5 border border-accent-green/40 text-accent-green
-              rounded-xl text-sm font-ui font-semibold active:opacity-80 transition-opacity"
-          >
-            Sincronizar stock desde este Excel
-          </button>
+          <>
+            <p className="text-[11px] text-accent-warn font-ui leading-relaxed">
+              ⚠ Esto SOBRESCRIBE el stock que la app calculó con tus registros de
+              Registro. Úsalo solo si el Excel tiene un conteo más confiable que
+              lo que ya registraste aquí — si no, vas a perder esos registros.
+            </p>
+            <button
+              onClick={handleReviewStockSync}
+              className="w-full py-2.5 border border-accent-green/40 text-accent-green
+                rounded-xl text-sm font-ui font-semibold active:opacity-80 transition-opacity"
+            >
+              Sincronizar stock desde este Excel
+            </button>
+          </>
         )}
 
         {/* Stock sync review panel */}
