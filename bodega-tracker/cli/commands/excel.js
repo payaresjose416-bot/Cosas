@@ -48,21 +48,35 @@ async function syncStock(args) {
   const stockEntries = await loadStockEntries()
   const stockMap = flattenStock(stockEntries, products)
 
-  const { existingChanges, newProducts } = detectStockSync(buf, products, stockMap)
+  const { existingChanges, newProducts, skipped, stockColLetter, stockColHeader } =
+    detectStockSync(buf, products, stockMap)
+
+  // Los saltados son el fallo silencioso que más duele: su stock queda sin
+  // corregir y el dashboard sigue mostrando un número viejo. Siempre avisarlos.
+  const warnSkipped = () => {
+    if (!skipped.length) return
+    console.error(`\n${skipped.length} producto(s) NO se pudieron leer (su stock queda sin corregir):`)
+    printTable(['PRODUCTO', 'MOTIVO'], skipped.map(s => [s.name, s.reason]))
+    if (skipped.some(s => s.reason === 'formula-sin-valor')) {
+      console.error('Sugerencia: abre el Excel en Excel/Sheets y guárdalo de nuevo para que queden los valores calculados.')
+    }
+  }
 
   if (existingChanges.length === 0) {
-    if (values.json) printJSON({ ok: true, existingChanges: [], newProducts })
+    if (values.json) printJSON({ ok: true, existingChanges: [], newProducts, skipped, stockColLetter, stockColHeader })
     else {
-      console.log('No hay cambios de stock que aplicar.')
+      console.log(`No hay cambios de stock que aplicar. (columna ${stockColLetter} — "${stockColHeader}")`)
       if (newProducts.length) console.log(`Productos nuevos en el Excel (no en el catálogo): ${newProducts.map(p => p.name).join(', ')}`)
+      warnSkipped()
     }
     return
   }
 
   const preview = () => {
-    console.error('Cambios de stock detectados en el Excel:')
+    console.error(`Cambios de stock detectados en el Excel (columna ${stockColLetter} — "${stockColHeader}"):`)
     printTable(['PRODUCTO', 'ANTES', 'DESPUÉS'], existingChanges.map(c => [c.name, c.oldStock, c.newStock]))
     if (newProducts.length) console.error(`\n(${newProducts.length} producto(s) nuevos en el Excel, sin match en el catálogo — usa "bodega producto-nuevo" para agregarlos)`)
+    warnSkipped()
   }
 
   const proceed = await confirmWrite({
@@ -79,7 +93,7 @@ async function syncStock(args) {
   const date = new Date().toISOString().slice(0, 10)
   await saveHistory(historyForStockSync(history, { date, changes }))
 
-  if (values.json) printJSON({ ok: true, applied: existingChanges, newProducts })
+  if (values.json) printJSON({ ok: true, applied: existingChanges, newProducts, skipped })
   else console.log(`Aplicado: ${existingChanges.length} producto(s) actualizados.`)
 }
 

@@ -8,6 +8,12 @@ const MONTHS_ES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
+const SKIP_REASONS = {
+  'formula-sin-valor': 'fórmula sin valor',
+  'celda-vacia': 'celda vacía',
+  'no-numerico': 'no numérico',
+}
+
 export default function TabExportar({ history, stock, onToast, products, addProducts, applyStockSync }) {
   const handleDownloadStock = () => {
     const date = new Date().toISOString().slice(0, 10)
@@ -111,7 +117,11 @@ export default function TabExportar({ history, stock, onToast, products, addProd
     if (!excelBuffer) { onToast('Carga el archivo .xlsx primero', 'warn'); return }
     try {
       const result = detectStockSync(excelBuffer, products, stock)
-      if (result.existingChanges.length === 0 && result.newProducts.length === 0) {
+      if (
+        result.existingChanges.length === 0 &&
+        result.newProducts.length === 0 &&
+        result.skipped.length === 0
+      ) {
         onToast('No se detectaron cambios de stock', 'info')
         return
       }
@@ -355,7 +365,10 @@ export default function TabExportar({ history, stock, onToast, products, addProd
         {stockSyncResult && (
           <div className="bg-accent-green/5 border border-accent-green/30 rounded-xl p-3 animate-fade-in">
             <p className="text-sm font-ui font-bold text-accent-green">
-              Revisión de stock — columna "{stockSyncResult.stockColLetter}"
+              Revisión de stock — columna {stockSyncResult.stockColLetter}
+            </p>
+            <p className="text-[11px] font-mono text-text-muted mt-0.5">
+              encabezado leído: "{stockSyncResult.stockColHeader}"
             </p>
 
             {stockSyncResult.existingChanges.length > 0 && (
@@ -399,6 +412,29 @@ export default function TabExportar({ history, stock, onToast, products, addProd
                     </label>
                   ))}
                 </div>
+              </>
+            )}
+
+            {stockSyncResult.skipped.length > 0 && (
+              <>
+                <p className="text-xs text-accent-warn font-ui mt-3 mb-1.5">
+                  {stockSyncResult.skipped.length} producto(s) NO se pudieron leer —
+                  su stock quedará sin corregir:
+                </p>
+                <div className="space-y-1">
+                  {stockSyncResult.skipped.map(s => (
+                    <div key={s.name} className="flex items-start gap-2">
+                      <span className="text-sm font-mono text-text-primary flex-1">{s.name}</span>
+                      <span className="text-[10px] font-mono text-accent-warn text-right w-28 shrink-0">
+                        {SKIP_REASONS[s.reason] ?? s.reason}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] font-ui text-text-muted mt-1.5 leading-relaxed">
+                  Si dice "fórmula sin valor", abre el Excel en Excel/Sheets y guárdalo
+                  de nuevo para que queden los resultados calculados, y vuelve a sincronizar.
+                </p>
               </>
             )}
 
