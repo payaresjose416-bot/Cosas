@@ -57,10 +57,15 @@ export function historyForDeleteDay(rawHistory, { date, type = 'salida', now = D
 
 export function stockBumpForDeleteDay(stockEntries, { entry, now = Date.now() }) {
   if (!entry || entry.deleted) return stockEntries
+  const type = entry.type || 'salida'
+  // Registros heredados de tipo 'sync' (de una versión anterior de la app que
+  // sincronizaba el stock actual desde Excel, ya retirada) son solo bitácora —
+  // no representan un movimiento de stock propio, así que no hay nada que revertir.
+  if (type !== 'salida' && type !== 'entrada') return stockEntries
   const next = { ...stockEntries }
   for (const item of entry.items) {
     const cur = next[item.id]?.qty ?? 0
-    const delta = (entry.type || 'salida') === 'salida' ? item.qty : -item.qty
+    const delta = type === 'salida' ? item.qty : -item.qty
     next[item.id] = { qty: Math.max(0, cur + delta), updatedAt: now }
   }
   return next
@@ -96,13 +101,5 @@ export function applySetThreshold(thresholds, { productId, value, now = Date.now
     low: Number(value.low) || 0,
     updatedAt: now,
   }
-  return next
-}
-
-// `changes` es [{ id, newStock }], tal como lo produce detectStockSync
-// (src/utils/excelStockSync.js).
-export function applyStockSyncChanges(stockEntries, changes, now = Date.now()) {
-  const next = { ...stockEntries }
-  for (const { id, newStock } of changes) next[id] = { qty: newStock, updatedAt: now }
   return next
 }

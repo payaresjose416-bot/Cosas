@@ -1,14 +1,20 @@
 import { useState, useRef } from 'react'
 import { writeToExcel, generateTSV } from '../utils/excelExport.js'
 import { detectNewProducts } from '../utils/excelDetect.js'
-import { detectStockSync } from '../utils/excelStockSync.js'
+import { detectInitialStockSync } from '../utils/excelStockSync.js'
 
 const MONTHS_ES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
-export default function TabExportar({ history, stock, onToast, products, addProducts, applyStockSync }) {
+const SKIP_REASONS = {
+  'formula-sin-valor': 'fórmula sin valor',
+  'celda-vacia': 'celda vacía',
+  'no-numerico': 'no numérico',
+}
+
+export default function TabExportar({ history, stock, onToast, products, addProducts, applyInitialStockSync, getInitialStock }) {
   const handleDownloadStock = () => {
     const date = new Date().toISOString().slice(0, 10)
     const lines = [`Stock restante — ${date}`, '']
@@ -110,11 +116,12 @@ export default function TabExportar({ history, stock, onToast, products, addProd
   const handleReviewStockSync = () => {
     if (!excelBuffer) { onToast('Carga el archivo .xlsx primero', 'warn'); return }
     try {
-      const result = detectStockSync(excelBuffer, products, stock)
-      if (result.existingChanges.length === 0 && result.newProducts.length === 0) {
-        onToast('No se detectaron cambios de stock', 'info')
-        return
-      }
+      const initialStockMap = Object.fromEntries(products.map(p => [p.id, getInitialStock(p.id)]))
+      const result = detectInitialStockSync(excelBuffer, products, initialStockMap)
+      // Siempre se muestra el panel, incluso sin cambios — un toast genérico de
+      // "no se detectaron cambios" es indistinguible de "no se leyó nada" (ej.
+      // porque el nombre del producto no estaba en la columna esperada), y esa
+      // ambigüedad es justo lo que hacía invisible el bug del stock desactualizado.
       setStockSyncResult(result)
       setSelectedStockChanges(new Set(result.existingChanges.map(c => c.id)))
       setSelectedStockNew(new Set(result.newProducts.map(n => n.name)))
@@ -149,13 +156,13 @@ export default function TabExportar({ history, stock, onToast, products, addProd
     const newToAdd = stockSyncResult.newProducts.filter(n => selectedStockNew.has(n.name))
 
     if (changesToApply.length > 0) {
-      applyStockSync(changesToApply.map(({ id, newStock }) => ({ id, newStock })))
+      applyInitialStockSync(changesToApply.map(({ id, newInitial }) => ({ id, newInitial })))
     }
     if (newToAdd.length > 0) {
       addProducts(newToAdd)
     }
     onToast(
-      `Stock actualizado: ${changesToApply.length} producto(s), ${newToAdd.length} nuevo(s)`,
+      `Stock inicial actualizado: ${changesToApply.length} producto(s), ${newToAdd.length} nuevo(s)`,
       'success'
     )
     setStockSyncResult(null)
@@ -342,26 +349,59 @@ export default function TabExportar({ history, stock, onToast, products, addProd
 
         {/* Sync stock button */}
         {excelBuffer && (
-          <button
-            onClick={handleReviewStockSync}
-            className="w-full py-2.5 border border-accent-green/40 text-accent-green
-              rounded-xl text-sm font-ui font-semibold active:opacity-80 transition-opacity"
-          >
-            Sincronizar stock desde este Excel
-          </button>
+          <>
+            <p className="text-[11px] text-text-muted font-ui leading-relaxed">
+              Esto solo lee nombres de producto y "Stock inicial" del Excel — nunca
+              toca el stock actual, que la app calcula sola con tus registros.
+            </p>
+            <button
+              onClick={handleReviewStockSync}
+              className="w-full py-2.5 border border-accent-green/40 text-accent-green
+                rounded-xl text-sm font-ui font-semibold active:opacity-80 transition-opacity"
+            >
+              Traer nombres y stock inicial desde este Excel
+            </button>
+          </>
         )}
 
         {/* Stock sync review panel */}
         {stockSyncResult && (
           <div className="bg-accent-green/5 border border-accent-green/30 rounded-xl p-3 animate-fade-in">
             <p className="text-sm font-ui font-bold text-accent-green">
-              Revisión de stock — columna "{stockSyncResult.stockColLetter}"
+              Revisión — columna {stockSyncResult.initialColLetter}
             </p>
+            <p className="text-[11px] font-mono text-text-muted mt-0.5">
+              stock inicial: "{stockSyncResult.initialColHeader}" ·{' '}
+              nombre: columna {stockSyncResult.nameColLetter}
+              {stockSyncResult.nameColHeader ? ` ("${stockSyncResult.nameColHeader}")` : ' (por defecto, sin encabezado detectado)'}
+            </p>
+            <p className="text-[11px] font-mono text-text-muted">
+              {stockSyncResult.rowsScanned} fila(s) revisadas · {stockSyncResult.rowsWithName} con nombre de producto
+            </p>
+
+            {stockSyncResult.rowsWithName === 0 && (
+              <p className="text-xs text-accent-danger font-ui mt-2 leading-relaxed">
+                No se leyó ningún nombre de producto en la columna {stockSyncResult.nameColLetter}.
+                Es probable que en este Excel los nombres estén en otra columna —
+                revisa el archivo o avísame en qué columna están.
+              </p>
+            )}
+
+            {stockSyncResult.rowsWithName > 0 &&
+              stockSyncResult.existingChanges.length === 0 &&
+              stockSyncResult.newProducts.length === 0 &&
+              stockSyncResult.skipped.length === 0 && (
+              <p className="text-xs text-text-muted font-ui mt-2">
+                Se leyeron {stockSyncResult.rowsWithName} producto(s) y el stock inicial
+                ya coincide con el de la app — nada que traer.
+              </p>
+            )}
 
             {stockSyncResult.existingChanges.length > 0 && (
               <>
                 <p className="text-xs text-text-muted font-ui mt-2 mb-1.5">
-                  Cambios de stock en productos existentes:
+                  Stock inicial distinto al de la app (solo actualiza el valor de
+                  referencia "inicial", no el stock actual):
                 </p>
                 <div className="space-y-1.5">
                   {stockSyncResult.existingChanges.map(c => (
@@ -373,7 +413,7 @@ export default function TabExportar({ history, stock, onToast, products, addProd
                         className="w-4 h-4 rounded border-border accent-accent-green"
                       />
                       <span className="text-sm font-mono text-text-primary flex-1">{c.name}</span>
-                      <span className="text-xs font-mono text-text-muted">{c.oldStock} → {c.newStock}</span>
+                      <span className="text-xs font-mono text-text-muted">{c.oldInitial} → {c.newInitial}</span>
                     </label>
                   ))}
                 </div>
@@ -383,7 +423,7 @@ export default function TabExportar({ history, stock, onToast, products, addProd
             {stockSyncResult.newProducts.length > 0 && (
               <>
                 <p className="text-xs text-text-muted font-ui mt-3 mb-1.5">
-                  Productos nuevos (se agregarán con su stock actual):
+                  Productos nuevos (se agregarán con este stock inicial):
                 </p>
                 <div className="space-y-1.5">
                   {stockSyncResult.newProducts.map(n => (
@@ -402,6 +442,29 @@ export default function TabExportar({ history, stock, onToast, products, addProd
               </>
             )}
 
+            {stockSyncResult.skipped.length > 0 && (
+              <>
+                <p className="text-xs text-accent-warn font-ui mt-3 mb-1.5">
+                  {stockSyncResult.skipped.length} producto(s) NO se pudieron leer —
+                  su stock quedará sin corregir:
+                </p>
+                <div className="space-y-1">
+                  {stockSyncResult.skipped.map(s => (
+                    <div key={s.name} className="flex items-start gap-2">
+                      <span className="text-sm font-mono text-text-primary flex-1">{s.name}</span>
+                      <span className="text-[10px] font-mono text-accent-warn text-right w-28 shrink-0">
+                        {SKIP_REASONS[s.reason] ?? s.reason}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] font-ui text-text-muted mt-1.5 leading-relaxed">
+                  Si dice "fórmula sin valor", abre el Excel en Excel/Sheets y guárdalo
+                  de nuevo para que queden los resultados calculados, y vuelve a sincronizar.
+                </p>
+              </>
+            )}
+
             <div className="flex gap-2 mt-3">
               <button
                 onClick={handleApplyStockSync}
@@ -409,7 +472,7 @@ export default function TabExportar({ history, stock, onToast, products, addProd
                 className="flex-1 py-2 bg-accent-green text-bg font-ui font-bold
                   rounded-lg text-sm disabled:opacity-30 active:opacity-90 transition-opacity"
               >
-                Aplicar cambios de stock
+                Aplicar stock inicial
               </button>
               <button
                 onClick={handleDismissStockSync}

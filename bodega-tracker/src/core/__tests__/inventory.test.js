@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  applySaveDay, applyDeleteDay, applyUpdateStock, applySetThreshold, applySetInitialStock, applyStockSyncChanges,
+  applySaveDay, applyDeleteDay, applyUpdateStock, applySetThreshold, applySetInitialStock,
+  stockBumpForDeleteDay,
 } from '../inventory.js'
 
 test('applySaveDay: registra una salida nueva y descuenta stock', () => {
@@ -97,10 +98,16 @@ test('applySetThreshold: valor objeto normaliza a número y marca updatedAt', ()
   assert.equal(next.detergente.low, 5)
 })
 
-test('applyStockSyncChanges: aplica solo los productos incluidos en el diff del Excel', () => {
-  const stockEntries = { a: { qty: 1, updatedAt: 0 }, b: { qty: 2, updatedAt: 0 } }
-  const next = applyStockSyncChanges(stockEntries, [{ id: 'a', newStock: 9 }], 1000)
-  assert.equal(next.a.qty, 9)
-  assert.equal(next.a.updatedAt, 1000)
-  assert.equal(next.b.qty, 2) // no tocado
+// La app dejó de crear registros de tipo 'sync' (una versión anterior
+// sincronizaba el stock actual desde la columna Restantes del Excel; ahora el
+// Excel solo alimenta el "stock inicial" vía applySetInitialStock, nunca el
+// stock que se calcula con los registros). Este test cubre la compatibilidad
+// hacia atrás: si un dispositivo todavía tiene en su Historial sincronizado
+// uno de esos registros 'sync' antiguos y el usuario lo borra, no debe
+// revertir ningún stock — es solo bitácora, no un movimiento real.
+test('stockBumpForDeleteDay: un registro sync heredado no revierte stock al borrarse (es solo bitácora)', () => {
+  const stockEntries = { azucar: { qty: 4, updatedAt: 1000 } }
+  const entry = { date: '2026-06-28', type: 'sync', items: [{ id: 'azucar', oldStock: 0, newStock: 4 }] }
+  const next = stockBumpForDeleteDay(stockEntries, { entry, now: 2000 })
+  assert.equal(next.azucar.qty, 4) // sin cambios
 })

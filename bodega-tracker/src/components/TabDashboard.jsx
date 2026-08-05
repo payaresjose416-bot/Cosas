@@ -23,7 +23,7 @@ const STATUS = {
   },
 }
 
-export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold, updateStock, getInitialStock, setInitialStock }) {
+export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold, updateStock, getInitialStock, setInitialStock, getStockUpdatedAt }) {
   const [filter, setFilter] = useState('todos')
   const [qtyOverride, setQtyOverride] = useState({})
   const [editingId, setEditingId] = useState(null)
@@ -43,7 +43,7 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
       const rate = isFinite(days) && days > 0 ? currentStock / days : 0
       const t = thresholds?.[p.id]
       let suggested
-      if (rate > 0) suggested = Math.max(1, Math.ceil(rate * 14 - currentStock))
+      if (rate > 0) suggested = Math.max(1, Math.ceil(rate * 30 - currentStock))
       else if (t && !t.deleted && t.low > 0) suggested = Math.max(1, Math.ceil(t.low * 2 - currentStock))
       else suggested = 1
       return { product: p, qty: qtyOverride[p.id] ?? suggested }
@@ -226,7 +226,7 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
           <p className="text-text-primary font-ui font-bold text-sm">Lista de compras</p>
           {shopping.length > 0 && (
             <span className="text-[11px] font-mono text-text-muted">
-              cobertura ~14 dias
+              cobertura ~30 dias
             </span>
           )}
         </div>
@@ -307,12 +307,16 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
         {visibleProducts.map(p => {
           const status = getStatus(p.id)
           const days = getDaysRemaining(p.id)
-          const pct = Math.min(100, Math.max(0, (days / 14) * 100))
+          const pct = Math.min(100, Math.max(0, (days / 30) * 100))
           const sc = STATUS[status]
           const currentStock = stock[p.id] ?? p.initialStock
           const initialStock = getInitialStock(p.id)
           const t = thresholds?.[p.id]
           const hasCustom = t && !t.deleted
+          const updatedAt = getStockUpdatedAt?.(p.id)
+          const updatedLabel = updatedAt
+            ? new Date(updatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+            : 'sin registrar'
 
           return (
             <div key={p.id} className="border-b border-border last:border-0">
@@ -333,6 +337,7 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
                   </div>
                   <p className="mt-1 text-[10px] font-mono text-text-muted">
                     inicial: {initialStock % 1 === 0 ? initialStock : initialStock.toFixed(1)}
+                    {' · actualizado: '}{updatedLabel}
                   </p>
                 </div>
                 <span className="font-mono text-sm text-right text-text-primary tabular-nums">

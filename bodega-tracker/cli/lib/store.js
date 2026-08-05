@@ -19,6 +19,10 @@ export async function loadThresholds() {
   return (await loadFromCloud('thresholds')) || {}
 }
 
+export async function loadInitialStocks() {
+  return (await loadFromCloud('initial_stocks')) || {}
+}
+
 export async function loadCustomProducts() {
   return (await loadFromCloud('custom_products')) || []
 }
@@ -42,6 +46,9 @@ export const saveStockEntries = (next) => writeSynced('stock', mergeStock, next)
 export const saveHistory = (next) => writeSynced('history', mergeHistory, next)
 export const saveThresholds = (next) => writeSynced('thresholds', mergeThresholds, next)
 export const saveCustomProducts = (next) => writeSynced('custom_products', mergeProducts, next)
+// initialStocks sigue el mismo patrón {value, updatedAt} tombstoneable que
+// thresholds (ver CLAUDE.md), así que reutiliza el mismo merge LWW.
+export const saveInitialStocks = (next) => writeSynced('initial_stocks', mergeThresholds, next)
 
 // Vista plana { id: qty } a partir de stockEntries { id: {qty, updatedAt} },
 // con fallback a initialStock para productos que aún no tienen entrada.
@@ -51,4 +58,15 @@ export function flattenStock(stockEntries, products) {
     stock[p.id] = stockEntries[p.id]?.qty ?? p.initialStock
   }
   return stock
+}
+
+// Vista plana { id: valorInicial } a partir de initialStocks { id: {value, updatedAt, deleted} },
+// con fallback al initialStock estático del catálogo (mismo patrón que getInitialStock en useInventory.js).
+export function flattenInitialStocks(initialStocks, products) {
+  const out = {}
+  for (const p of products) {
+    const o = initialStocks[p.id]
+    out[p.id] = (o && !o.deleted) ? o.value : p.initialStock
+  }
+  return out
 }

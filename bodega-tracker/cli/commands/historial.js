@@ -23,11 +23,18 @@ export async function run(args) {
   entries = entries.sort((a, b) => b.date.localeCompare(a.date))
   if (values.limite) entries = entries.slice(0, Number(values.limite))
 
-  const rows = entries.map(h => ({
-    fecha: h.date,
-    tipo: h.type || 'salida',
-    items: h.items.map(i => ({ id: i.id, nombre: productMap[i.id]?.name ?? i.id, qty: i.qty })),
-  }))
+  const rows = entries.map(h => {
+    const tipo = h.type || 'salida'
+    return {
+      fecha: h.date,
+      tipo,
+      items: h.items.map(i => ({
+        id: i.id,
+        nombre: productMap[i.id]?.name ?? i.id,
+        qty: tipo === 'sync' ? `${i.oldStock} → ${i.newStock}` : i.qty,
+      })),
+    }
+  })
 
   if (values.json) { printJSON(rows); return }
 

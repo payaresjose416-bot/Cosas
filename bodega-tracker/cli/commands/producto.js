@@ -26,10 +26,13 @@ export async function run(args) {
   const recentHistory = history
     .filter(h => h.items.some(i => i.id === product.id))
     .slice(-10)
-    .map(h => ({
-      fecha: h.date, tipo: h.type || 'salida',
-      cantidad: h.items.find(i => i.id === product.id)?.qty ?? 0,
-    }))
+    .map(h => {
+      const item = h.items.find(i => i.id === product.id)
+      const tipo = h.type || 'salida'
+      return tipo === 'sync'
+        ? { fecha: h.date, tipo, cantidad: `${item.oldStock} → ${item.newStock}` }
+        : { fecha: h.date, tipo, cantidad: item?.qty ?? 0 }
+    })
 
   const result = {
     id: product.id, nombre: product.name, categoria: product.category, unidad: product.unit,

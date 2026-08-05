@@ -4,7 +4,7 @@ import { useSync } from './useSync.js'
 import { toEntries, mergeStock, mergeThresholds, mergeHistory } from '../core/merge.js'
 import {
   historyForSaveDay, stockBumpForSaveDay, historyForDeleteDay, stockBumpForDeleteDay,
-  applyUpdateStock, applySetThreshold, applySetInitialStock, applyStockSyncChanges,
+  applyUpdateStock, applySetThreshold, applySetInitialStock,
 } from '../core/inventory.js'
 import { getDaysRemaining as coreGetDaysRemaining, getStatus as coreGetStatus } from '../core/status.js'
 
@@ -186,17 +186,30 @@ export function useInventory(products, productMap) {
     coreGetStatus(productId, { stock, history, thresholds, productMap }),
   [stock, history, thresholds, productMap])
 
-  const applyStockSync = useCallback((changes) => {
-    setStockEntries(prev => applyStockSyncChanges(prev, changes))
+  // El Excel corporativo nunca sobrescribe el stock que la app calcula sola —
+  // solo alimenta el valor de referencia "inicial: N" (ver detectInitialStockSync
+  // en utils/excelStockSync.js). `changes` es [{ id, newInitial }].
+  const applyInitialStockSync = useCallback((changes) => {
+    setInitialStocks(prev => {
+      let next = prev
+      for (const { id, newInitial } of changes) {
+        next = applySetInitialStock(next, { productId: id, value: newInitial })
+      }
+      return next
+    })
   }, [])
 
   const updateStock = useCallback((productId, newQty) => {
     setStockEntries(prev => applyUpdateStock(prev, { productId, newQty }))
   }, [])
 
+  const getStockUpdatedAt = useCallback((productId) =>
+    stockEntries[productId]?.updatedAt || 0,
+  [stockEntries])
+
   return {
     stock, history, saveDay, deleteDay, getDaysRemaining, getStatus,
-    applyStockSync, thresholds, setThreshold, updateStock,
-    initialStocks, getInitialStock, setInitialStock,
+    applyInitialStockSync, thresholds, setThreshold, updateStock,
+    initialStocks, getInitialStock, setInitialStock, getStockUpdatedAt,
   }
 }
