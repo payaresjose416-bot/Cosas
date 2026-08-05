@@ -27,9 +27,17 @@ const NOT_CLOSING_STOCK_KEYWORDS = ['inicial', 'ingreso', 'compra', 'entrada']
 // hay antes de las columnas calculadas) puede correr todo el layout. Se busca
 // por encabezado primero; si ninguno matchea (o valida, ver abajo), se cae a
 // B como hasta ahora para no romper los archivos que sí siguen ese layout.
-// 'item' se excluye a propósito: en la práctica matchea columnas de código
-// numérico ("Ítem", "Código Ítem"), no la del nombre del producto.
-const NAME_HEADER_KEYWORDS = ['producto', 'articulo', 'descripcion', 'elemento', 'nombre']
+//
+// El orden importa: en la matriz corporativa real las columnas van "ID de
+// producto" | "Nombre" | "Descripcion" (¡esta última contiene la UNIDAD de
+// medida, no una descripción!) | "Stock inicial" | ... — así que 'nombre' va
+// primero (inequívoco) y 'descripcion' al final (demostradamente engañosa en
+// esa plantilla). 'item' se excluye del todo: en la práctica es la columna
+// de código numérico, no la del nombre.
+const NAME_HEADER_KEYWORDS = ['nombre', 'producto', 'articulo', 'elemento', 'descripcion']
+// "ID de producto" contiene la palabra 'producto' — sin esto, esa keyword se
+// quedaría con la columna de código en vez de seguir buscando la de nombre.
+const NAME_EXCLUDE_WORDS = ['id', 'codigo', 'referencia']
 const DEFAULT_NAME_COL = 1 // columna B
 
 // Los encabezados de la matriz no siempre están en la primera fila (suele haber
@@ -56,6 +64,13 @@ function columnIsTextish(ws, range, col) {
   return textCount >= numericCount
 }
 
+// Match por palabra completa, no por substring — así 'id' no rechaza de paso
+// un encabezado legítimo que solo *contiene* esas letras (ej. "Unidad").
+function hasExcludedWord(norm, words) {
+  const tokens = norm.split(' ')
+  return words.some(w => tokens.includes(w))
+}
+
 function findHeaderColumn(ws, range, keywords, { exclude = [], validate } = {}) {
   const maxRow = Math.min(MAX_HEADER_ROW, range.e.r)
   for (const kw of keywords) {
@@ -65,7 +80,7 @@ function findHeaderColumn(ws, range, keywords, { exclude = [], validate } = {}) 
         if (!cell || cell.v == null) continue
         const norm = normalize(String(cell.v))
         if (!norm || !norm.includes(kw)) continue
-        if (exclude.some(bad => norm.includes(bad))) continue
+        if (hasExcludedWord(norm, exclude)) continue
         if (validate && !validate(c)) continue
         return { col: c, header: String(cell.v).trim() }
       }
@@ -80,7 +95,7 @@ function findStockColumn(ws, range) {
 
 function findNameColumn(ws, range) {
   const validate = (col) => columnIsTextish(ws, range, col)
-  const found = findHeaderColumn(ws, range, NAME_HEADER_KEYWORDS, { validate })
+  const found = findHeaderColumn(ws, range, NAME_HEADER_KEYWORDS, { exclude: NAME_EXCLUDE_WORDS, validate })
   if (found.col !== -1) return found
   return { col: DEFAULT_NAME_COL, header: null }
 }

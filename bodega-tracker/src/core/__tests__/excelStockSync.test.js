@@ -78,6 +78,41 @@ test('detectStockSync: si el nombre real vive en otra columna que B y no hay enc
   assert.ok(result.rowsScanned > 0) // sí se escanearon filas, solo no había nombre en B
 })
 
+// Caso real: el usuario compartió el .xlsx corporativo real, y su layout es
+// exactamente este — "ID de producto" | "Nombre" | "Descripcion" (¡contiene
+// la UNIDAD de medida, no una descripción!) | "Stock inicial" | ... . Con
+// 'descripcion' antes que 'nombre' en la prioridad, la app tomaba la columna
+// de unidades como si fuera el nombre, y como muchos productos comparten
+// unidad, la deduplicación por nombre colapsaba ~30 productos en 6 filas.
+test('detectStockSync: layout real corporativo — "Nombre" gana sobre "Descripcion" (que es la unidad) e "ID de producto" no se confunde con nombre', () => {
+  const rows = [
+    ['INFORMACION DEL PRODUCTO', '', '', 'CONSUMO DIARIO'],
+    ['ID de producto', 'Nombre', 'Descripcion', 'Stock inicial', 'Suministrado a', '', '', 'Restantes'],
+    [1696, 'Ambientador glade aerosol', 'UNIDAD', 3, 'Servicios de Limpieza', '', '', 3],
+    [2488, 'Aromatica Bamby Manzani x25x1gr', 'CAJA', 6, 'Servicios de Limpieza', '', '', 6],
+    [6143, 'Aromatica Bamby Yerbabuena x 20 unid', 'CAJA', 2, 'Servicios de Limpieza', '', '', 0],
+    ['', 'aromatica infusion frutos rojos x20 unid', 'CAJA', 6, 'Servicios de Limpieza', '', '', 6],
+  ]
+  const catalogo = [
+    { id: 'ambientador', name: 'Ambientador Glade Aerosol', excelNames: ['ambientador glade'], initialStock: 3 },
+    { id: 'aromatica_manz', name: 'Aromática Bamby Manzanilla', excelNames: ['bamby manzani'], initialStock: 1 },
+    { id: 'aromatica_yerba', name: 'Aromática Bamby Yerbabuena', excelNames: ['bamby yerbabuena'], initialStock: 4 },
+    { id: 'aromatica_frutos', name: 'Aromática Frutos Rojos', excelNames: ['frutos rojos'], initialStock: 1 },
+  ]
+  const buf = makeBuffer(rows)
+  const result = detectStockSync(buf, catalogo, {
+    ambientador: 3, aromatica_manz: 6, aromatica_yerba: 4, aromatica_frutos: 6,
+  })
+
+  assert.equal(result.nameColHeader, 'Nombre')
+  assert.equal(result.rowsWithName, 4)
+  assert.equal(result.newProducts.length, 0) // ninguno cayó como "producto nuevo" por leer la unidad
+  // yerbabuena es el único con cambio real (4 -> 0); el resto ya coincidía
+  assert.equal(result.existingChanges.length, 1)
+  assert.equal(result.existingChanges[0].id, 'aromatica_yerba')
+  assert.equal(result.existingChanges[0].newStock, 0)
+})
+
 // El caso reportado tras el fix anterior: una columna de código numérico con
 // encabezado "Item" desviaba la detección (¡"item" matcheaba, pero apuntaba a
 // códigos, no a nombres!) y el panel terminaba mostrando "1696", "2488"...
