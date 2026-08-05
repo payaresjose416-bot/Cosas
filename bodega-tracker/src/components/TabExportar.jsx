@@ -117,14 +117,10 @@ export default function TabExportar({ history, stock, onToast, products, addProd
     if (!excelBuffer) { onToast('Carga el archivo .xlsx primero', 'warn'); return }
     try {
       const result = detectStockSync(excelBuffer, products, stock)
-      if (
-        result.existingChanges.length === 0 &&
-        result.newProducts.length === 0 &&
-        result.skipped.length === 0
-      ) {
-        onToast('No se detectaron cambios de stock', 'info')
-        return
-      }
+      // Siempre se muestra el panel, incluso sin cambios — un toast genérico de
+      // "no se detectaron cambios" es indistinguible de "no se leyó nada" (ej.
+      // porque el nombre del producto no estaba en la columna esperada), y esa
+      // ambigüedad es justo lo que hacía invisible el bug del stock desactualizado.
       setStockSyncResult(result)
       setSelectedStockChanges(new Set(result.existingChanges.map(c => c.id)))
       setSelectedStockNew(new Set(result.newProducts.map(n => n.name)))
@@ -368,8 +364,31 @@ export default function TabExportar({ history, stock, onToast, products, addProd
               Revisión de stock — columna {stockSyncResult.stockColLetter}
             </p>
             <p className="text-[11px] font-mono text-text-muted mt-0.5">
-              encabezado leído: "{stockSyncResult.stockColHeader}"
+              stock: "{stockSyncResult.stockColHeader}" ·{' '}
+              nombre: columna {stockSyncResult.nameColLetter}
+              {stockSyncResult.nameColHeader ? ` ("${stockSyncResult.nameColHeader}")` : ' (por defecto, sin encabezado detectado)'}
             </p>
+            <p className="text-[11px] font-mono text-text-muted">
+              {stockSyncResult.rowsScanned} fila(s) revisadas · {stockSyncResult.rowsWithName} con nombre de producto
+            </p>
+
+            {stockSyncResult.rowsWithName === 0 && (
+              <p className="text-xs text-accent-danger font-ui mt-2 leading-relaxed">
+                No se leyó ningún nombre de producto en la columna {stockSyncResult.nameColLetter}.
+                Es probable que en este Excel los nombres estén en otra columna —
+                revisa el archivo o avísame en qué columna están.
+              </p>
+            )}
+
+            {stockSyncResult.rowsWithName > 0 &&
+              stockSyncResult.existingChanges.length === 0 &&
+              stockSyncResult.newProducts.length === 0 &&
+              stockSyncResult.skipped.length === 0 && (
+              <p className="text-xs text-text-muted font-ui mt-2">
+                Se leyeron {stockSyncResult.rowsWithName} producto(s) y todos ya coinciden
+                con el stock actual de la app — nada que sincronizar.
+              </p>
+            )}
 
             {stockSyncResult.existingChanges.length > 0 && (
               <>

@@ -48,8 +48,10 @@ async function syncStock(args) {
   const stockEntries = await loadStockEntries()
   const stockMap = flattenStock(stockEntries, products)
 
-  const { existingChanges, newProducts, skipped, stockColLetter, stockColHeader } =
-    detectStockSync(buf, products, stockMap)
+  const {
+    existingChanges, newProducts, skipped, stockColLetter, stockColHeader,
+    nameColLetter, nameColHeader, rowsScanned, rowsWithName,
+  } = detectStockSync(buf, products, stockMap)
 
   // Los saltados son el fallo silencioso que más duele: su stock queda sin
   // corregir y el dashboard sigue mostrando un número viejo. Siempre avisarlos.
@@ -63,9 +65,19 @@ async function syncStock(args) {
   }
 
   if (existingChanges.length === 0) {
-    if (values.json) printJSON({ ok: true, existingChanges: [], newProducts, skipped, stockColLetter, stockColHeader })
-    else {
-      console.log(`No hay cambios de stock que aplicar. (columna ${stockColLetter} — "${stockColHeader}")`)
+    if (values.json) {
+      printJSON({
+        ok: true, existingChanges: [], newProducts, skipped,
+        stockColLetter, stockColHeader, nameColLetter, nameColHeader, rowsScanned, rowsWithName,
+      })
+    } else {
+      console.log(`Columna de stock: ${stockColLetter} ("${stockColHeader}") · columna de nombre: ${nameColLetter}${nameColHeader ? ` ("${nameColHeader}")` : ' (por defecto, sin encabezado detectado)'}`)
+      console.log(`${rowsScanned} fila(s) revisadas, ${rowsWithName} con nombre de producto.`)
+      if (rowsWithName === 0) {
+        console.log(`Ningún nombre de producto se leyó en la columna ${nameColLetter} — probablemente los nombres están en otra columna en este archivo.`)
+      } else {
+        console.log('No hay cambios de stock que aplicar.')
+      }
       if (newProducts.length) console.log(`Productos nuevos en el Excel (no en el catálogo): ${newProducts.map(p => p.name).join(', ')}`)
       warnSkipped()
     }

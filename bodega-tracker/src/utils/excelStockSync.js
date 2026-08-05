@@ -22,25 +22,43 @@ const STOCK_HEADER_KEYWORDS = [
 // que queda hoy.
 const NOT_CLOSING_STOCK_KEYWORDS = ['inicial', 'ingreso', 'compra', 'entrada']
 
+// Igual que con la columna de stock: el nombre del producto no siempre cae en
+// la columna B — la anchura del ciclo (y con ella, cuántas columnas de fecha
+// hay antes de las columnas calculadas) puede correr todo el layout. Se busca
+// por encabezado primero; si ninguno matchea, se cae a B como hasta ahora para
+// no romper los archivos que sí siguen ese layout.
+const NAME_HEADER_KEYWORDS = ['producto', 'articulo', 'descripcion', 'elemento', 'nombre', 'item']
+const DEFAULT_NAME_COL = 1 // columna B
+
 // Los encabezados de la matriz no siempre están en la primera fila (suele haber
 // título/subtítulo arriba), así que escaneamos varias filas antes de rendirnos.
 const MAX_HEADER_ROW = 4
 
-function findStockColumn(ws, range) {
+function findHeaderColumn(ws, range, keywords, { exclude = [] } = {}) {
   const maxRow = Math.min(MAX_HEADER_ROW, range.e.r)
-  for (const kw of STOCK_HEADER_KEYWORDS) {
+  for (const kw of keywords) {
     for (let r = 0; r <= maxRow; r++) {
       for (let c = 0; c <= range.e.c; c++) {
         const cell = ws[XLSX.utils.encode_cell({ r, c })]
         if (!cell || cell.v == null) continue
         const norm = normalize(String(cell.v))
         if (!norm || !norm.includes(kw)) continue
-        if (NOT_CLOSING_STOCK_KEYWORDS.some(bad => norm.includes(bad))) continue
+        if (exclude.some(bad => norm.includes(bad))) continue
         return { col: c, header: String(cell.v).trim() }
       }
     }
   }
   return { col: -1, header: null }
+}
+
+function findStockColumn(ws, range) {
+  return findHeaderColumn(ws, range, STOCK_HEADER_KEYWORDS, { exclude: NOT_CLOSING_STOCK_KEYWORDS })
+}
+
+function findNameColumn(ws, range) {
+  const found = findHeaderColumn(ws, range, NAME_HEADER_KEYWORDS)
+  if (found.col !== -1) return found
+  return { col: DEFAULT_NAME_COL, header: null }
 }
 
 // Las columnas calculadas (Restantes = inicial − consumos) suelen ser fórmulas.
@@ -79,17 +97,23 @@ export function detectStockSync(fileBuffer, products, stockMap) {
     )
   }
 
+  const { col: nameCol, header: nameColHeader } = findNameColumn(ws, range)
+
   const existingChanges = []
   const newProducts = []
   const skipped = []
   const seen = new Set()
+  let rowsScanned = 0
+  let rowsWithName = 0
 
   for (let r = 2; r <= range.e.r; r++) {
-    const nameCell = ws[XLSX.utils.encode_cell({ r, c: 1 })]
+    rowsScanned++
+    const nameCell = ws[XLSX.utils.encode_cell({ r, c: nameCol })]
     if (!nameCell || nameCell.v == null) continue
     const raw = String(nameCell.v).trim()
     const norm = normalize(raw)
     if (norm.length < 3 || seen.has(norm)) continue
+    rowsWithName++
     seen.add(norm)
 
     const stockCell = ws[XLSX.utils.encode_cell({ r, c: stockCol })]
@@ -115,8 +139,12 @@ export function detectStockSync(fileBuffer, products, stockMap) {
   return {
     stockColLetter: XLSX.utils.encode_col(stockCol),
     stockColHeader,
+    nameColLetter: XLSX.utils.encode_col(nameCol),
+    nameColHeader,
     existingChanges,
     newProducts,
     skipped,
+    rowsScanned,
+    rowsWithName,
   }
 }
