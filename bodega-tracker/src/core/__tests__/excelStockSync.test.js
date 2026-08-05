@@ -78,6 +78,43 @@ test('detectStockSync: si el nombre real vive en otra columna que B y no hay enc
   assert.ok(result.rowsScanned > 0) // sí se escanearon filas, solo no había nombre en B
 })
 
+// El caso reportado tras el fix anterior: una columna de código numérico con
+// encabezado "Item" desviaba la detección (¡"item" matcheaba, pero apuntaba a
+// códigos, no a nombres!) y el panel terminaba mostrando "1696", "2488"...
+// como si fueran productos. 'item' ya no es palabra clave, y aunque lo fuera,
+// la validación de contenido (mayoría de texto, no números) la descartaría.
+test('detectStockSync: una columna de código numérico con encabezado ambiguo no se confunde con la de nombre', () => {
+  const rows = [
+    [],
+    ['Item', 'Descripción', 'Restantes'],
+    [1696, 'AZUCAR MANUELITA X 200 SOBRES', 5],
+    [2488, 'DETERGENTE MULTI NEUTRO', 10],
+  ]
+  const buf = makeBuffer(rows)
+  const result = detectStockSync(buf, products, { azucar: 0, detergente: 10 })
+
+  assert.equal(result.nameColHeader, 'Descripción')
+  assert.equal(result.existingChanges.length, 1)
+  assert.equal(result.existingChanges[0].id, 'azucar')
+  assert.equal(result.newProducts.length, 0) // nada quedó como "producto nuevo" numérico
+})
+
+// Si NINGUNA columna de texto matchea las palabras clave (el header real dice
+// algo como "Insumo", que no está en la lista) y la única candidata que
+// matchea por palabra es numérica, debe descartarla y caer al fallback (B) en
+// vez de quedarse con la columna de códigos.
+test('detectStockSync: si la única columna que matchea por header es numérica, cae al fallback en vez de usarla', () => {
+  const rows = [
+    [],
+    ['Elemento', 'Insumo', 'Restantes'], // 'Elemento' es el código (numérico), 'Insumo' no matchea ninguna keyword
+    [1696, 'AZUCAR MANUELITA X 200 SOBRES', 5],
+  ]
+  const buf = makeBuffer(rows)
+  const result = detectStockSync(buf, products, { azucar: 0 })
+
+  assert.equal(result.nameColLetter, 'B') // fallback: la columna A ("Elemento") es numérica, se descarta
+})
+
 // La rama de fórmula-sin-valor-cacheado de readStockValue (celda con .f pero
 // sin .v ni .w, como la deja un .xlsx generado por script) ya está cubierta
 // directamente en stockCell.test.js — reproducir esa celda a través de un

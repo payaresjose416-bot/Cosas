@@ -25,16 +25,38 @@ const NOT_CLOSING_STOCK_KEYWORDS = ['inicial', 'ingreso', 'compra', 'entrada']
 // Igual que con la columna de stock: el nombre del producto no siempre cae en
 // la columna B — la anchura del ciclo (y con ella, cuántas columnas de fecha
 // hay antes de las columnas calculadas) puede correr todo el layout. Se busca
-// por encabezado primero; si ninguno matchea, se cae a B como hasta ahora para
-// no romper los archivos que sí siguen ese layout.
-const NAME_HEADER_KEYWORDS = ['producto', 'articulo', 'descripcion', 'elemento', 'nombre', 'item']
+// por encabezado primero; si ninguno matchea (o valida, ver abajo), se cae a
+// B como hasta ahora para no romper los archivos que sí siguen ese layout.
+// 'item' se excluye a propósito: en la práctica matchea columnas de código
+// numérico ("Ítem", "Código Ítem"), no la del nombre del producto.
+const NAME_HEADER_KEYWORDS = ['producto', 'articulo', 'descripcion', 'elemento', 'nombre']
 const DEFAULT_NAME_COL = 1 // columna B
 
 // Los encabezados de la matriz no siempre están en la primera fila (suele haber
 // título/subtítulo arriba), así que escaneamos varias filas antes de rendirnos.
 const MAX_HEADER_ROW = 4
 
-function findHeaderColumn(ws, range, keywords, { exclude = [] } = {}) {
+// Cuántas filas de datos se muestrean para validar que una columna candidata
+// realmente contiene texto (nombres) y no números (códigos/cantidades) — así
+// una columna como "Código Ítem" no puede pasar por la del nombre solo porque
+// su encabezado matcheó una palabra clave ambigua.
+const SAMPLE_ROWS = 10
+
+function columnIsTextish(ws, range, col) {
+  let textCount = 0
+  let numericCount = 0
+  const maxRow = Math.min(range.e.r, 1 + SAMPLE_ROWS)
+  for (let r = 2; r <= maxRow; r++) {
+    const cell = ws[XLSX.utils.encode_cell({ r, c: col })]
+    if (!cell || cell.v == null || cell.v === '') continue
+    if (cell.t === 'n' || (typeof cell.v === 'number')) numericCount++
+    else textCount++
+  }
+  if (textCount + numericCount === 0) return false
+  return textCount >= numericCount
+}
+
+function findHeaderColumn(ws, range, keywords, { exclude = [], validate } = {}) {
   const maxRow = Math.min(MAX_HEADER_ROW, range.e.r)
   for (const kw of keywords) {
     for (let r = 0; r <= maxRow; r++) {
@@ -44,6 +66,7 @@ function findHeaderColumn(ws, range, keywords, { exclude = [] } = {}) {
         const norm = normalize(String(cell.v))
         if (!norm || !norm.includes(kw)) continue
         if (exclude.some(bad => norm.includes(bad))) continue
+        if (validate && !validate(c)) continue
         return { col: c, header: String(cell.v).trim() }
       }
     }
@@ -56,7 +79,8 @@ function findStockColumn(ws, range) {
 }
 
 function findNameColumn(ws, range) {
-  const found = findHeaderColumn(ws, range, NAME_HEADER_KEYWORDS)
+  const validate = (col) => columnIsTextish(ws, range, col)
+  const found = findHeaderColumn(ws, range, NAME_HEADER_KEYWORDS, { validate })
   if (found.col !== -1) return found
   return { col: DEFAULT_NAME_COL, header: null }
 }
