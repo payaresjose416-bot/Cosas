@@ -1,12 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
-import { detectInitialStockSync } from '../../utils/excelStockSync.js'
+import { detectInitialStockSync, parseInitialDate } from '../../utils/excelStockSync.js'
 
 const products = [
   { id: 'azucar', name: 'Azúcar Manuelita x200 Sobres', excelNames: ['azucar manuelita', 'azucar'], initialStock: 0 },
   { id: 'detergente', name: 'Detergente Multi Neutro x1kg', excelNames: ['detergente'], initialStock: 0 },
 ]
+
+const noAnchor = (ids) => Object.fromEntries(ids.map(id => [id, { value: 0, date: null }]))
 
 // Construye un workbook con la hoja "Matriz de Consumo (2)" a partir de una
 // matriz de filas (aoa), tal como haría el control de inventario real.
@@ -17,6 +19,17 @@ function makeBuffer(rows, sheetName = 'Matriz de Consumo (2)') {
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
 }
 
+test('parseInitialDate: extrae dd/mm/aaaa del header y lo convierte a ISO', () => {
+  assert.equal(parseInitialDate('Stock inicial \n30/06/2026'), '2026-06-30')
+  assert.equal(parseInitialDate('Stock inicial 5/1/2026'), '2026-01-05')
+})
+
+test('parseInitialDate: sin fecha reconocible, devuelve null en vez de adivinar', () => {
+  assert.equal(parseInitialDate('Stock inicial'), null)
+  assert.equal(parseInitialDate(null), null)
+  assert.equal(parseInitialDate('Stock inicial 32/13/2026'), null) // mes/día inválidos
+})
+
 test('detectInitialStockSync: encuentra la columna "Stock inicial" por encabezado y produce el diff', () => {
   const rows = [
     [],
@@ -25,17 +38,42 @@ test('detectInitialStockSync: encuentra la columna "Stock inicial" por encabezad
     [2, 'DETERGENTE MULTI NEUTRO', 10, '', '', '', 3],
   ]
   const buf = makeBuffer(rows)
-  // El stock actual de la app (0 y 10) es irrelevante para esta función — ni
-  // siquiera se le pasa. Solo compara contra el "stock inicial" ya guardado.
-  const result = detectInitialStockSync(buf, products, { azucar: 0, detergente: 10 })
+  const result = detectInitialStockSync(buf, products, {
+    azucar: { value: 0, date: null }, detergente: { value: 10, date: null },
+  })
 
   assert.equal(result.initialColHeader, 'Stock inicial')
+  assert.equal(result.initialDate, null) // sin fecha en este header de prueba
   assert.equal(result.existingChanges.length, 1)
   assert.equal(result.existingChanges[0].id, 'azucar')
   assert.equal(result.existingChanges[0].oldInitial, 0)
   assert.equal(result.existingChanges[0].newInitial, 5)
-  // Detergente: 10 (Excel) === 10 (app) -> sin cambio, aunque Restantes diga 3.
+  // Detergente: 5 (Excel) === 10 (app)? no, 10 === 10 -> sin cambio, aunque Restantes diga 3.
   // La columna Restantes NUNCA se lee para esto.
+})
+
+test('detectInitialStockSync: parsea la fecha real del header ("Stock inicial \\n30/06/2026")', () => {
+  const rows = [
+    [],
+    ['#', 'Producto', 'Stock inicial \n30/06/2026'],
+    [1, 'AZUCAR MANUELITA X 200 SOBRES', 5],
+  ]
+  const buf = makeBuffer(rows)
+  const result = detectInitialStockSync(buf, products, noAnchor(['azucar', 'detergente']))
+  assert.equal(result.initialDate, '2026-06-30')
+})
+
+test('detectInitialStockSync: un cambio de fecha (mismo valor) también cuenta como cambio a aplicar', () => {
+  const rows = [
+    [],
+    ['#', 'Producto', 'Stock inicial \n30/06/2026'],
+    [1, 'AZUCAR MANUELITA X 200 SOBRES', 5],
+  ]
+  const buf = makeBuffer(rows)
+  // Ya tiene value:5 en la app, pero con una fecha vieja distinta -> debe reportarse.
+  const result = detectInitialStockSync(buf, products, { azucar: { value: 5, date: '2026-05-01' } })
+  assert.equal(result.existingChanges.length, 1)
+  assert.equal(result.existingChanges[0].oldDate, '2026-05-01')
 })
 
 test('detectInitialStockSync: si no hay ninguna columna "Stock inicial", falla con error claro', () => {
@@ -55,7 +93,7 @@ test('detectInitialStockSync: encuentra el nombre por encabezado aunque no sea l
     ['AZUCAR MANUELITA X 200 SOBRES', 'Cafeteria', 3],
   ]
   const buf = makeBuffer(rows)
-  const result = detectInitialStockSync(buf, products, { azucar: 0 })
+  const result = detectInitialStockSync(buf, products, noAnchor(['azucar', 'detergente']))
 
   assert.equal(result.nameColLetter, 'A')
   assert.equal(result.rowsWithName, 1)
@@ -89,7 +127,7 @@ test('detectInitialStockSync: si el nombre real vive en otra columna que B y no 
 test('detectInitialStockSync: layout real corporativo — "Nombre" gana sobre "Descripcion" (que es la unidad) e "ID de producto" no se confunde con nombre', () => {
   const rows = [
     ['INFORMACION DEL PRODUCTO', '', '', 'CONSUMO DIARIO'],
-    ['ID de producto', 'Nombre', 'Descripcion', 'Stock inicial', 'Suministrado a', '', '', 'Restantes'],
+    ['ID de producto', 'Nombre', 'Descripcion', 'Stock inicial \n30/06/2026', 'Suministrado a', '', '', 'Restantes'],
     [1696, 'Ambientador glade aerosol', 'UNIDAD', 3, 'Servicios de Limpieza', '', '', 3],
     [2488, 'Aromatica Bamby Manzani x25x1gr', 'CAJA', 6, 'Servicios de Limpieza', '', '', 6],
     [6143, 'Aromatica Bamby Yerbabuena x 20 unid', 'CAJA', 2, 'Servicios de Limpieza', '', '', 0],
@@ -103,13 +141,17 @@ test('detectInitialStockSync: layout real corporativo — "Nombre" gana sobre "D
   ]
   const buf = makeBuffer(rows)
   const result = detectInitialStockSync(buf, catalogo, {
-    ambientador: 3, aromatica_manz: 6, aromatica_yerba: 2, aromatica_frutos: 6,
+    ambientador: { value: 3, date: '2026-06-30' },
+    aromatica_manz: { value: 6, date: '2026-06-30' },
+    aromatica_yerba: { value: 2, date: '2026-06-30' },
+    aromatica_frutos: { value: 6, date: '2026-06-30' },
   })
 
   assert.equal(result.nameColHeader, 'Nombre')
+  assert.equal(result.initialDate, '2026-06-30')
   assert.equal(result.rowsWithName, 4)
   assert.equal(result.newProducts.length, 0) // ninguno cayó como "producto nuevo" por leer la unidad
-  assert.equal(result.existingChanges.length, 0) // todos los "stock inicial" ya coincidían
+  assert.equal(result.existingChanges.length, 0) // todos los "stock inicial" y fechas ya coincidían
 })
 
 // El caso reportado tras el fix anterior: una columna de código numérico con
@@ -125,7 +167,9 @@ test('detectInitialStockSync: una columna de código numérico con encabezado am
     [2488, 'DETERGENTE MULTI NEUTRO', 10],
   ]
   const buf = makeBuffer(rows)
-  const result = detectInitialStockSync(buf, products, { azucar: 0, detergente: 10 })
+  const result = detectInitialStockSync(buf, products, {
+    azucar: { value: 0, date: null }, detergente: { value: 10, date: null },
+  })
 
   assert.equal(result.nameColHeader, 'Descripción')
   assert.equal(result.existingChanges.length, 1)
@@ -144,7 +188,7 @@ test('detectInitialStockSync: si la única columna que matchea por header es num
     [1696, 'AZUCAR MANUELITA X 200 SOBRES', 5],
   ]
   const buf = makeBuffer(rows)
-  const result = detectInitialStockSync(buf, products, { azucar: 0 })
+  const result = detectInitialStockSync(buf, products, noAnchor(['azucar', 'detergente']))
 
   assert.equal(result.nameColLetter, 'B') // fallback: la columna A ("Elemento") es numérica, se descarta
 })

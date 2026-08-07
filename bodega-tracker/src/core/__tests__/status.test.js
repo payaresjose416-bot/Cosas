@@ -1,10 +1,59 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { getDaysRemaining, getStatus } from '../status.js'
+import { getDaysRemaining, getStatus, getCurrentStock } from '../status.js'
 
 const productMap = {
   detergente: { id: 'detergente', initialStock: 10, dailyRate: 0.5 },
 }
+
+test('getCurrentStock: sin ancla, cae al initialStock del catálogo', () => {
+  const stock = getCurrentStock('detergente', { initialStocks: {}, history: [], productMap })
+  assert.equal(stock, 10)
+})
+
+test('getCurrentStock: ancla sin fecha queda congelada (no descuenta nada)', () => {
+  const initialStocks = { detergente: { value: 7, date: null, updatedAt: 100 } }
+  const history = [{ date: '2026-07-01', type: 'salida', items: [{ id: 'detergente', qty: 3 }] }]
+  const stock = getCurrentStock('detergente', { initialStocks, history, productMap })
+  assert.equal(stock, 7)
+})
+
+test('getCurrentStock: descuenta salidas registradas desde la fecha ancla en adelante', () => {
+  const initialStocks = { detergente: { value: 10, date: '2026-06-30', updatedAt: 100 } }
+  const history = [
+    { date: '2026-06-30', type: 'salida', items: [{ id: 'detergente', qty: 2 }] },
+    { date: '2026-07-05', type: 'salida', items: [{ id: 'detergente', qty: 3 }] },
+  ]
+  const stock = getCurrentStock('detergente', { initialStocks, history, productMap })
+  assert.equal(stock, 5) // 10 - 2 - 3
+})
+
+test('getCurrentStock: suma entradas registradas desde la fecha ancla', () => {
+  const initialStocks = { detergente: { value: 5, date: '2026-06-30', updatedAt: 100 } }
+  const history = [{ date: '2026-07-01', type: 'entrada', items: [{ id: 'detergente', qty: 4 }] }]
+  const stock = getCurrentStock('detergente', { initialStocks, history, productMap })
+  assert.equal(stock, 9)
+})
+
+test('getCurrentStock: ignora registros con fecha ANTERIOR al ancla', () => {
+  const initialStocks = { detergente: { value: 10, date: '2026-06-30', updatedAt: 100 } }
+  const history = [{ date: '2026-06-29', type: 'salida', items: [{ id: 'detergente', qty: 8 }] }]
+  const stock = getCurrentStock('detergente', { initialStocks, history, productMap })
+  assert.equal(stock, 10) // el registro del 29 es de ANTES del ciclo, no cuenta
+})
+
+test('getCurrentStock: nunca baja de cero', () => {
+  const initialStocks = { detergente: { value: 2, date: '2026-06-30', updatedAt: 100 } }
+  const history = [{ date: '2026-07-01', type: 'salida', items: [{ id: 'detergente', qty: 10 }] }]
+  const stock = getCurrentStock('detergente', { initialStocks, history, productMap })
+  assert.equal(stock, 0)
+})
+
+test('getCurrentStock: ancla tombstoneada (deleted) cae al catálogo', () => {
+  const initialStocks = { detergente: { deleted: true, updatedAt: 100 } }
+  const stock = getCurrentStock('detergente', { initialStocks, history: [], productMap })
+  assert.equal(stock, 10)
+})
 
 test('getDaysRemaining: usa el promedio de consumo real de los últimos días si hay historial', () => {
   const stock = { detergente: 10 }

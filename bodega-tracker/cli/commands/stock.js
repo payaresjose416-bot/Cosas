@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util'
-import { loadProducts, loadStockEntries, loadThresholds, loadHistory, flattenStock } from '../lib/store.js'
+import { loadProducts, loadInitialStocks, loadThresholds, loadHistory, flattenStock, migrateLegacyStock } from '../lib/store.js'
 import { getStatus } from '../../src/core/status.js'
 import { printTable, printJSON, statusLabel, die } from '../lib/format.js'
 
@@ -20,10 +20,11 @@ export async function run(args) {
   }
 
   const { products, productMap } = await loadProducts()
-  const stockEntries = await loadStockEntries()
+  let initialStocks = await loadInitialStocks()
   const thresholds = await loadThresholds()
   const history = await loadHistory()
-  const stock = flattenStock(stockEntries, products)
+  initialStocks = await migrateLegacyStock(initialStocks, products)
+  const stock = flattenStock(initialStocks, history, products, productMap)
 
   let rows = products.map(p => ({
     id: p.id,

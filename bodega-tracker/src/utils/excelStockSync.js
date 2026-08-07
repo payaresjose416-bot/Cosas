@@ -81,6 +81,22 @@ function findInitialStockColumn(ws, range) {
   return findHeaderColumn(ws, range, INITIAL_STOCK_HEADER_KEYWORDS)
 }
 
+// El encabezado real trae la fecha embebida como texto, ej.
+// "Stock inicial \n30/06/2026" — es la fecha desde la que cuenta el ancla
+// (día en que la compra entró a bodega), y es la misma para todo el archivo
+// (un Excel = un ciclo). Si no se puede extraer, el llamador debe pedirla a
+// mano — nunca asumir "hoy" en silencio.
+export function parseInitialDate(headerText) {
+  if (!headerText) return null
+  const m = String(headerText).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (!m) return null
+  const day = Number(m[1])
+  const month = Number(m[2])
+  const year = Number(m[3])
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 function findNameColumn(ws, range) {
   const validate = (col) => columnIsTextish(ws, range, col)
   const found = findHeaderColumn(ws, range, NAME_HEADER_KEYWORDS, { exclude: NAME_EXCLUDE_WORDS, validate })
@@ -103,12 +119,13 @@ export function readStockValue(cell) {
   return { value: null, reason: 'no-numerico' }
 }
 
-// Lee del Excel corporativo SOLO nombres de producto + Stock inicial. Nunca
+// Lee del Excel corporativo SOLO nombres de producto + Stock inicial (y la
+// fecha desde la que cuenta, embebida en el header de esa columna). Nunca
 // toca (ni siquiera lee para comparar) el stock actual/restantes — ese lo
-// calcula la app sola con lo registrado en Registro. `initialStockMap` es
-// `{ productId: valorInicialActualEnLaApp }`, solo para poder mostrar el
-// diff antes/después en el panel de revisión.
-export function detectInitialStockSync(fileBuffer, products, initialStockMap) {
+// calcula la app sola con lo registrado en Registro. `currentAnchors` es
+// `{ productId: { value, date } }` — el ancla actual en la app, solo para
+// poder mostrar el diff antes/después en el panel de revisión.
+export function detectInitialStockSync(fileBuffer, products, currentAnchors) {
   const workbook = XLSX.read(new Uint8Array(fileBuffer), { type: 'array' })
 
   if (!workbook.SheetNames.includes(SHEET_NAME)) {
@@ -125,6 +142,7 @@ export function detectInitialStockSync(fileBuffer, products, initialStockMap) {
       `encabezado en las primeras ${MAX_HEADER_ROW + 1} filas). Verifica el archivo.`
     )
   }
+  const initialDate = parseInitialDate(initialColHeader)
 
   const { col: nameCol, header: nameColHeader } = findNameColumn(ws, range)
 
@@ -156,9 +174,13 @@ export function detectInitialStockSync(fileBuffer, products, initialStockMap) {
 
     if (productId) {
       const product = products.find(p => p.id === productId)
-      const oldInitial = initialStockMap[productId] ?? product.initialStock ?? 0
-      if (oldInitial !== newInitial) {
-        existingChanges.push({ id: productId, name: product.name, oldInitial, newInitial })
+      const current = currentAnchors[productId] ?? { value: product.initialStock ?? 0, date: null }
+      if (current.value !== newInitial || current.date !== initialDate) {
+        existingChanges.push({
+          id: productId, name: product.name,
+          oldInitial: current.value, newInitial,
+          oldDate: current.date,
+        })
       }
     } else {
       newProducts.push({ name: raw, stock: newInitial })
@@ -168,6 +190,7 @@ export function detectInitialStockSync(fileBuffer, products, initialStockMap) {
   return {
     initialColLetter: XLSX.utils.encode_col(initialCol),
     initialColHeader,
+    initialDate,
     nameColLetter: XLSX.utils.encode_col(nameCol),
     nameColHeader,
     existingChanges,

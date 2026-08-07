@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util'
 import { parseInput } from '../../src/utils/parser.js'
-import { loadProducts, loadStockEntries, loadHistory, saveStockEntries, saveHistory } from '../lib/store.js'
-import { historyForSaveDay, stockBumpForSaveDay } from '../../src/core/inventory.js'
+import { loadProducts, loadHistory, saveHistory } from '../lib/store.js'
+import { historyForSaveDay } from '../../src/core/inventory.js'
 import { resolveProduct } from '../lib/resolveProduct.js'
 import { confirmWrite } from '../lib/confirm.js'
 import { printJSON, die } from '../lib/format.js'
@@ -61,14 +61,8 @@ export async function run(args) {
   })
   if (!proceed) return
 
-  const stockEntries = await loadStockEntries()
   const rawHistory = await loadHistory()
-  const existingEntry = rawHistory.find(h => h.date === date && (h.type || 'salida') === values.tipo)
-
-  const nextStock = stockBumpForSaveDay(stockEntries, { existingEntry, items, type: values.tipo })
   const nextHistory = historyForSaveDay(rawHistory, { date, items, type: values.tipo })
-
-  await saveStockEntries(nextStock)
   await saveHistory(nextHistory)
 
   if (values.json) printJSON({ ok: true, date, type: values.tipo, items })

@@ -1,50 +1,19 @@
-// Reducers puros sobre el estado de inventario (stock, historial, umbrales).
-// Reciben estado plano y devuelven estado nuevo — sin useState, sin efectos.
-// Usados por src/hooks/useInventory.js (envoltorio con estado de React) y por
-// el CLI (que lee/escribe directo contra Supabase). `now` se inyecta para que
-// el comportamiento sea determinista en tests.
+// Reducers puros sobre el estado de inventario (historial, umbrales, ancla de
+// stock inicial). Reciben estado plano y devuelven estado nuevo — sin
+// useState, sin efectos. Usados por src/hooks/useInventory.js (envoltorio con
+// estado de React) y por el CLI (que lee/escribe directo contra Supabase).
+// `now` se inyecta para que el comportamiento sea determinista en tests.
 //
-// Cada operación se expone en dos formas:
-//   - piezas granulares (historyForX / stockBumpForX) — las usa el hook, que
-//     necesita disparar dos setState de React por separado (uno para stock,
-//     otro para historial) tal como lo hacía el código original.
-//   - una función combinada (applyX) — la usa el CLI, que no tiene estado de
-//     React y solo necesita "un estado nuevo" de una sola vez.
-
-function findEntry(rawHistory, date, type) {
-  return rawHistory.find(h => h.date === date && (h.type || 'salida') === type)
-}
+// El stock actual NO es un contador guardado aparte — se calcula
+// (`getCurrentStock` en core/status.js) a partir del ancla `initialStocks`
+// (valor + fecha desde la que cuenta) y de `history`. Por eso `saveDay`/
+// `deleteDay` solo tocan `history`: el efecto sobre el stock calculado es
+// automático, no hay nada que "revertir" aparte.
 
 export function historyForSaveDay(rawHistory, { date, items, type = 'salida', now = Date.now() }) {
   const filtered = rawHistory.filter(h => !(h.date === date && (h.type || 'salida') === type))
   return [...filtered, { date, type, items, updatedAt: now }]
     .sort((a, b) => a.date.localeCompare(b.date))
-}
-
-// Revierte el efecto del registro existente (si lo hay) y aplica el nuevo.
-export function stockBumpForSaveDay(stockEntries, { existingEntry, items, type = 'salida', now = Date.now() }) {
-  const next = { ...stockEntries }
-  const bump = (id, delta) => {
-    const cur = next[id]?.qty ?? 0
-    next[id] = { qty: Math.max(0, cur + delta), updatedAt: now }
-  }
-  if (existingEntry && !existingEntry.deleted) {
-    for (const item of existingEntry.items) {
-      bump(item.id, type === 'salida' ? item.qty : -item.qty)
-    }
-  }
-  for (const item of items) {
-    bump(item.id, type === 'salida' ? -item.qty : item.qty)
-  }
-  return next
-}
-
-export function applySaveDay(stockEntries, rawHistory, opts) {
-  const existingEntry = findEntry(rawHistory, opts.date, opts.type || 'salida')
-  return {
-    stockEntries: stockBumpForSaveDay(stockEntries, { ...opts, existingEntry }),
-    rawHistory: historyForSaveDay(rawHistory, opts),
-  }
 }
 
 // Tombstone en vez de borrado real: al fusionar con la nube gana por updatedAt
@@ -55,41 +24,15 @@ export function historyForDeleteDay(rawHistory, { date, type = 'salida', now = D
     .sort((a, b) => a.date.localeCompare(b.date))
 }
 
-export function stockBumpForDeleteDay(stockEntries, { entry, now = Date.now() }) {
-  if (!entry || entry.deleted) return stockEntries
-  const type = entry.type || 'salida'
-  // Registros heredados de tipo 'sync' (de una versión anterior de la app que
-  // sincronizaba el stock actual desde Excel, ya retirada) son solo bitácora —
-  // no representan un movimiento de stock propio, así que no hay nada que revertir.
-  if (type !== 'salida' && type !== 'entrada') return stockEntries
-  const next = { ...stockEntries }
-  for (const item of entry.items) {
-    const cur = next[item.id]?.qty ?? 0
-    const delta = type === 'salida' ? item.qty : -item.qty
-    next[item.id] = { qty: Math.max(0, cur + delta), updatedAt: now }
-  }
-  return next
-}
-
-export function applyDeleteDay(stockEntries, rawHistory, opts) {
-  const entry = findEntry(rawHistory, opts.date, opts.type || 'salida')
-  return {
-    stockEntries: stockBumpForDeleteDay(stockEntries, { ...opts, entry }),
-    rawHistory: historyForDeleteDay(rawHistory, opts),
-  }
-}
-
-export function applyUpdateStock(stockEntries, { productId, newQty, now = Date.now() }) {
-  return {
-    ...stockEntries,
-    [productId]: { qty: Math.max(0, Number(newQty) || 0), updatedAt: now },
-  }
-}
-
-export function applySetInitialStock(initialStocks, { productId, value, now = Date.now() }) {
+// El ancla de stock: `value` es el stock con el que arrancó el ciclo, `date`
+// (ISO YYYY-MM-DD) es desde cuándo cuenta — los registros de `history` con
+// fecha anterior a `date` no se descuentan/suman (ver getCurrentStock).
+// Ambos campos viajan juntos bajo el mismo `updatedAt` porque son un solo
+// hecho ("el día X había Y unidades"), nunca se editan por separado.
+export function applySetInitialStock(initialStocks, { productId, value, date, now = Date.now() }) {
   const next = { ...initialStocks }
   if (value == null) next[productId] = { deleted: true, updatedAt: now }
-  else next[productId] = { value: Math.max(0, Number(value) || 0), updatedAt: now }
+  else next[productId] = { value: Math.max(0, Number(value) || 0), date: date ?? null, updatedAt: now }
   return next
 }
 

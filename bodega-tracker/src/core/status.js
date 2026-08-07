@@ -1,5 +1,27 @@
 // Cálculo de estado/proyección de un producto — puro, sin React.
 
+// El stock actual NO se guarda como contador aparte — se calcula desde un
+// ancla (`initialStocks[id] = {value, date}`, la cantidad con la que arrancó
+// el ciclo y desde cuándo cuenta) más el historial de salidas/entradas
+// registradas desde esa fecha. Sin `date` (producto nunca anclado con un
+// ciclo real: recién migrado, o nunca sincronizado/corregido) el valor queda
+// congelado — no se descuenta nada hasta que exista una fecha real.
+export function getCurrentStock(productId, { initialStocks, history, productMap }) {
+  const o = initialStocks[productId]
+  const anchorValue = (o && !o.deleted) ? o.value : (productMap[productId]?.initialStock ?? 0)
+  const anchorDate = (o && !o.deleted && o.date) ? o.date : null
+  if (anchorDate == null) return anchorValue
+
+  let delta = 0
+  for (const h of history) {
+    if (h.deleted || h.date < anchorDate) continue
+    const item = h.items.find(i => i.id === productId)
+    if (!item) continue
+    delta += (h.type || 'salida') === 'salida' ? -item.qty : item.qty
+  }
+  return Math.max(0, anchorValue + delta)
+}
+
 export function getDaysRemaining(productId, { stock, history, productMap, lookback = 7 }) {
   const product = productMap[productId]
   if (!product) return 0
