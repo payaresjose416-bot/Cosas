@@ -12,6 +12,8 @@ const COMMANDS = {
   umbral: () => import('../commands/umbral.js'),
   'producto-nuevo': () => import('../commands/productoNuevo.js'),
   excel: () => import('../commands/excel.js'),
+  queja: () => import('../commands/queja.js'),
+  quejas: () => import('../commands/quejas.js'),
 }
 
 const HELP = `bodega — CLI del inventario de cafetería y aseo (Inversa-Coosalud)
@@ -23,6 +25,7 @@ Lectura:
   estado [--json]
   producto <id|nombre> [--json]
   historial [--desde F] [--hasta F] [--limite N] [--json]
+  quejas [--json]
 
 Escritura (vista previa + confirmación; --yes la salta, --dry-run nunca escribe):
   registrar "<texto libre>" [--fecha YYYY-MM-DD] [--tipo salida|entrada]
@@ -31,6 +34,7 @@ Escritura (vista previa + confirmación; --yes la salta, --dry-run nunca escribe
   set-stock <producto> <cantidad>
   umbral <producto> --critico N --bajo N   |   umbral <producto> --quitar
   producto-nuevo <nombre> [--stock N]
+  queja "<texto>" [--de "<autor>"]
 
 Excel:
   excel exportar <archivo.xlsx> [-o salida.xlsx]

@@ -27,6 +27,7 @@ bodega stock [--categoria cafeteria|aseo] [--estado critico|bajo|ok] --json
 bodega estado --json                       # resumen + lista de compras sugerida
 bodega producto <id|nombre> --json         # detalle, días restantes, historial reciente
 bodega historial [--desde F] [--hasta F] [--limite N] --json
+bodega quejas --json                       # notas/hallazgos ya dejados en el buzón
 ```
 
 **Escritura** — piden confirmación por defecto; usa `--yes` solo después de que el usuario aprobó la vista previa (ver "Regla de seguridad" abajo):
@@ -37,6 +38,7 @@ bodega borrar-dia <fecha> [--tipo salida|entrada]
 bodega set-stock <producto> <cantidad>
 bodega umbral <producto> --critico N --bajo N   |   bodega umbral <producto> --quitar
 bodega producto-nuevo "<nombre>" [--stock N]
+bodega queja "<texto>" [--de "<autor>"]
 ```
 
 **Excel** (el archivo corporativo de consumo, hoja "Matriz de Consumo (2)"):
@@ -47,6 +49,10 @@ bodega excel detectar <archivo.xlsx>                     # productos del Excel q
 ```
 
 Siempre usa `--json` cuando vayas a leer el resultado para razonar sobre él — la salida de tabla es para que la lea una persona, no para parsear.
+
+## Buzón (`queja`/`quejas`)
+
+`bodega queja "<texto>"` deja una nota visible en la pestaña Buzón de la app web — úsala para dejarle al usuario un hallazgo, una anomalía detectada, o cualquier cosa que valga la pena que vea aunque no esté en esta conversación (p. ej. si otra sesión de Claude, como Claude Desktop, operó el inventario y quiere avisarle algo). Pasa `--de "Claude Desktop"` (o el nombre que corresponda) para identificar el origen de la nota. Sigue la misma regla de vista previa + confirmación que cualquier otra escritura. No la uses para lo que ya tiene su propio canal (una escritura normal de stock/registro no necesita además una queja explicándola).
 
 ## Regla de oro: nunca inventes un id de producto
 

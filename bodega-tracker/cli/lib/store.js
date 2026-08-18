@@ -4,7 +4,7 @@
 // en useSync.syncToCloud (src/hooks/useSync.js) — así una escritura del CLI
 // nunca pisa un cambio más reciente hecho desde el navegador.
 import { loadFromCloud, saveToCloud } from '../../src/utils/supabase.js'
-import { mergeHistory, mergeThresholds, mergeProducts } from '../../src/core/merge.js'
+import { mergeHistory, mergeThresholds, mergeProducts, mergeNotes } from '../../src/core/merge.js'
 import { getCurrentStock } from '../../src/core/status.js'
 import { BASE_PRODUCTS } from '../../src/utils/products.js'
 
@@ -22,6 +22,10 @@ export async function loadInitialStocks() {
 
 export async function loadCustomProducts() {
   return (await loadFromCloud('custom_products')) || []
+}
+
+export async function loadNotes() {
+  return (await loadFromCloud('buzon')) || []
 }
 
 export async function loadProducts() {
@@ -45,6 +49,7 @@ export const saveCustomProducts = (next) => writeSynced('custom_products', merge
 // initialStocks sigue el mismo patrón {value, date, updatedAt} tombstoneable
 // que thresholds (ver CLAUDE.md), así que reutiliza el mismo merge LWW.
 export const saveInitialStocks = (next) => writeSynced('initial_stocks', mergeThresholds, next)
+export const saveNotes = (next) => writeSynced('buzon', mergeNotes, next)
 
 // El stock actual no se guarda — se calcula desde el ancla (initialStocks:
 // valor + fecha) y el historial. Ver getCurrentStock en core/status.js.

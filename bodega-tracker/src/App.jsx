@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useProducts } from './hooks/useProducts.js'
 import { useInventory } from './hooks/useInventory.js'
+import { useBuzon } from './hooks/useBuzon.js'
 import { useCriticalAlert, notificationsEnabled, enableNotifications, disableNotifications } from './hooks/useCriticalAlert.js'
 import TabRegistro from './components/TabRegistro.jsx'
 import TabDashboard from './components/TabDashboard.jsx'
 import TabHistorial from './components/TabHistorial.jsx'
 import TabExportar from './components/TabExportar.jsx'
+import TabBuzon from './components/TabBuzon.jsx'
 import Toast from './components/Toast.jsx'
 
 const TABS = [
@@ -35,6 +37,12 @@ const TABS = [
       <path d="M5 20h14" strokeLinecap="round" />
     </svg>
   )},
+  { id: 'buzon',     label: 'Buzón',      icon: (active) => (
+    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth={active ? 2.5 : 2}>
+      <path d="M3 8l9 6 9-6" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+    </svg>
+  )},
 ]
 
 export default function App() {
@@ -44,6 +52,7 @@ export default function App() {
   const [notifyOn, setNotifyOn] = useState(notificationsEnabled)
   const { products, productMap, addProducts } = useProducts()
   const inventory = useInventory(products, productMap)
+  const buzon = useBuzon()
 
   useCriticalAlert(products, inventory.getStatus)
 
@@ -75,6 +84,7 @@ export default function App() {
     dashboard: <TabDashboard {...inventory} products={products} productMap={productMap} onToast={onToast} />,
     historial: <TabHistorial {...inventory} productMap={productMap} onToast={onToast} onEditEntry={onEditEntry} />,
     exportar:  <TabExportar  {...inventory} products={products} addProducts={addProducts} onToast={onToast} />,
+    buzon:     <TabBuzon     {...buzon} onToast={onToast} />,
   }
 
   return (
