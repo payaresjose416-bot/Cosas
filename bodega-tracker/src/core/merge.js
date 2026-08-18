@@ -28,6 +28,18 @@ export function mergeHistory(local, cloud) {
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
 
+// Como mergeHistory, pero keyed por `id` en vez de fecha+tipo — puede haber
+// varias notas el mismo día.
+export function mergeNotes(local, cloud) {
+  const map = new Map()
+  for (const entry of local) map.set(entry.id, entry)
+  for (const entry of cloud) {
+    const existing = map.get(entry.id)
+    if (!existing || (entry.updatedAt || 0) > (existing.updatedAt || 0)) map.set(entry.id, entry)
+  }
+  return [...map.values()].sort((a, b) => b.createdAt - a.createdAt)
+}
+
 export function mergeProducts(local, cloud) {
   const map = new Map()
   for (const p of local) map.set(p.id, p)
