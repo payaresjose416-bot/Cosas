@@ -8,7 +8,7 @@ export default defineConfig([
   globalIgnores(['dist']),
   {
     files: ['**/*.{js,jsx}'],
-    ignores: ['cli/**', 'src/core/__tests__/**'],
+    ignores: ['cli/**', 'src/core/__tests__/**', 'mcp/**'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -20,9 +20,10 @@ export default defineConfig([
     },
   },
   {
-    // CLI y tests del núcleo corren en Node, no en el navegador — sin JSX,
-    // sin reglas de hooks de React, con globals de Node en vez de browser.
-    files: ['cli/**/*.js', 'src/core/__tests__/**/*.js'],
+    // CLI, servidor MCP y tests del núcleo corren en Node, no en el
+    // navegador — sin JSX, sin reglas de hooks de React, con globals de
+    // Node en vez de browser.
+    files: ['cli/**/*.js', 'mcp/**/*.js', 'src/core/__tests__/**/*.js'],
     extends: [js.configs.recommended],
     languageOptions: {
       globals: globals.node,

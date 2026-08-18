@@ -27,6 +27,29 @@ npm test          # node --test src/core — unit tests for the merge/reducer co
 
 `bodega` (bin: `cli/bin/bodega.js`, `npm link` to install) is a terminal client for the same Supabase data the web app reads — read/write inventory, register consumption, adjust thresholds, run the Excel import/export, all without a browser. It has **no local state**: every command does a read-merge-write against Supabase (`cli/lib/store.js`), the same pattern `useSync.js` uses. Write commands show a preview and ask for confirmation unless `--yes` is passed; `--dry-run` never writes. See `plugins/bodega/skills/bodega/SKILL.md` for the Claude Code skill that drives this CLI, distributed as a plugin from the repo-root marketplace (`.claude-plugin/marketplace.json`).
 
+### MCP server (`mcp/`)
+
+`mcp/server.js` exposes the same inventory as an MCP server (18 tools — 4 read, 5 write pairs `_preview`/`_confirmar`, 4 Excel), for clients that have no generic terminal tool (Claude Desktop) as well as Claude Code. It imports the same low-level pieces the CLI uses (`cli/lib/store.js`, `src/core/*`, `src/utils/*`) directly — **never** `cli/commands/*.js` `run()` functions, since those `console.log` for terminal output and this process's stdout is reserved for MCP's JSON-RPC framing. Since stock is computed (see "Stock is computed, not stored" below), `bodega_set_stock_*` anchors the cycle at today's date exactly like `bodega set-stock` in the CLI — it is not a separate stored counter.
+
+Write tools never take a plain `confirmar: boolean` — each has a `_preview` (resolves names to ids, returns the exact content plus a short-lived one-time `confirmToken`) and a `_confirmar` that requires that same resolved content again plus the token (`mcp/lib/confirmTokens.js` hashes and checks it matches). This exists so an approval dialog showing the `_confirmar` call's arguments *is* the real preview — there's no way to approve one thing and have a different one applied. Tokens live in memory only; a server restart invalidates all of them (fails safe, forces a fresh preview).
+
+**Registering it:**
+- **Claude Code**: already registered via the project's `.mcp.json` (repo root) — first use in a session asks for approval.
+- **Claude Desktop**: not automatic — Desktop reads a separate config file (`%APPDATA%\Claude\claude_desktop_config.json`, not `.mcp.json`), so it needs its own entry, added manually per machine:
+  ```json
+  {
+    "mcpServers": {
+      "bodega": {
+        "command": "node",
+        "args": ["C:\\Users\\AuxAdm\\Proyectos-Coosalud\\Cosas\\bodega-tracker\\mcp\\server.js"]
+      }
+    }
+  }
+  ```
+  Restart Desktop after editing. Absolute path required — Desktop doesn't expand `${CLAUDE_PROJECT_DIR}`.
+
+Debug with `npx @modelcontextprotocol/inspector node mcp/server.js` from `bodega-tracker/` — lists all tools and lets you drive the `_preview` → `_confirmar` flow by hand before touching a real client.
+
 ## Architecture
 
 ### State ownership and data flow

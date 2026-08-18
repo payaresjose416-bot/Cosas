@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bodega": {
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/bodega-tracker/mcp/server.js"]
+    }
+  }
+}
