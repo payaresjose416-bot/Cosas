@@ -1,35 +1,22 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { STOCK_VERSION } from '../utils/products.js'
 import { useSync } from './useSync.js'
-import { toEntries, mergeStock, mergeThresholds, mergeHistory } from '../core/merge.js'
+import { mergeThresholds, mergeHistory } from '../core/merge.js'
 import {
-  historyForSaveDay, stockBumpForSaveDay, historyForDeleteDay, stockBumpForDeleteDay,
-  applyUpdateStock, applySetThreshold, applySetInitialStock,
+  historyForSaveDay, historyForDeleteDay, applySetThreshold, applySetInitialStock,
 } from '../core/inventory.js'
-import { getDaysRemaining as coreGetDaysRemaining, getStatus as coreGetStatus } from '../core/status.js'
+import {
+  getDaysRemaining as coreGetDaysRemaining, getStatus as coreGetStatus, getCurrentStock,
+} from '../core/status.js'
 
 const KEYS = {
-  STOCK: 'bodega_stock',
   HISTORY: 'bodega_history',
   LAST_DATE: 'bodega_lastDate',
-  STOCK_VERSION: 'bodega_stock_version',
   THRESHOLDS: 'bodega_thresholds',
   INITIAL_STOCKS: 'bodega_initial_stocks',
 }
 
-function initStockEntries(products) {
-  try {
-    const savedVersion = Number(localStorage.getItem(KEYS.STOCK_VERSION) || 0)
-    if (savedVersion < STOCK_VERSION) {
-      localStorage.removeItem(KEYS.STOCK)
-      localStorage.setItem(KEYS.STOCK_VERSION, String(STOCK_VERSION))
-      return Object.fromEntries(products.map(p => [p.id, { qty: p.initialStock, updatedAt: 0 }]))
-    }
-    const stored = localStorage.getItem(KEYS.STOCK)
-    if (stored) return toEntries(JSON.parse(stored))
-  } catch {}
-  localStorage.setItem(KEYS.STOCK_VERSION, String(STOCK_VERSION))
-  return Object.fromEntries(products.map(p => [p.id, { qty: p.initialStock, updatedAt: 0 }]))
+function todayISO() {
+  return new Date().toISOString().slice(0, 10)
 }
 
 function initHistory() {
@@ -57,29 +44,22 @@ function initInitialStocks() {
 }
 
 export function useInventory(products, productMap) {
-  const [stockEntries, setStockEntries] = useState(() => initStockEntries(products))
   const [rawHistory, setRawHistory] = useState(initHistory)
   const [thresholds, setThresholds] = useState(initThresholds)
   const [initialStocks, setInitialStocks] = useState(initInitialStocks)
-  const skipSyncStock = useRef(false)
   const skipSyncHistory = useRef(false)
   const skipSyncThresholds = useRef(false)
   const skipSyncInitialStocks = useRef(false)
 
   const history = useMemo(() => rawHistory.filter(h => !h.deleted), [rawHistory])
-  const stock = useMemo(
-    () => Object.fromEntries(Object.entries(stockEntries).map(([id, e]) => [id, e.qty])),
-    [stockEntries],
-  )
 
-  const syncStock = useSync('stock', stockEntries, useCallback((cloudStock) => {
-    skipSyncStock.current = true
-    setStockEntries(prev => {
-      const merged = mergeStock(prev, cloudStock)
-      localStorage.setItem(KEYS.STOCK, JSON.stringify(merged))
-      return merged
-    })
-  }, []), mergeStock)
+  // El stock actual NO se guarda aparte — se calcula desde el ancla
+  // (initialStocks: valor + fecha desde la que cuenta) y el historial. Ver
+  // getCurrentStock en core/status.js.
+  const stock = useMemo(
+    () => Object.fromEntries(products.map(p => [p.id, getCurrentStock(p.id, { initialStocks, history, productMap })])),
+    [products, initialStocks, history, productMap],
+  )
 
   const syncHistory = useSync('history', rawHistory, useCallback((cloudHistory) => {
     skipSyncHistory.current = true
@@ -89,26 +69,6 @@ export function useInventory(products, productMap) {
       return merged
     })
   }, []), mergeHistory)
-
-  useEffect(() => {
-    setStockEntries(prev => {
-      let changed = false
-      const next = { ...prev }
-      for (const p of products) {
-        if (!(p.id in next)) {
-          next[p.id] = { qty: p.initialStock, updatedAt: 0 }
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [products])
-
-  useEffect(() => {
-    localStorage.setItem(KEYS.STOCK, JSON.stringify(stockEntries))
-    if (skipSyncStock.current) { skipSyncStock.current = false; return }
-    syncStock(stockEntries)
-  }, [stockEntries, syncStock])
 
   useEffect(() => {
     localStorage.setItem(KEYS.HISTORY, JSON.stringify(rawHistory))
@@ -146,6 +106,15 @@ export function useInventory(products, productMap) {
     syncInitialStocks(initialStocks)
   }, [initialStocks, syncInitialStocks])
 
+  // NO agregar aquí ninguna migración/siembra automática del ancla. Hubo una
+  // (leía la clave nube legada 'stock' y anclaba con fecha de hoy) y causó un
+  // bug real: corría al montar usando `initialStocks` de localStorage, sin
+  // esperar a que la carga de la nube resolviera, y escribía con un
+  // `Date.now()` fresco — que por LWW le ganaba al ancla real recién traída
+  // del Excel, devolviendo la fecha a "hoy" y dejando el stock congelado sin
+  // descontar ninguna salida. El ancla solo debe cambiar por acción explícita
+  // del usuario: sync del Excel, "editar stock inicial" o "editar stock actual".
+
   const setThreshold = useCallback((productId, value) => {
     setThresholds(prev => applySetThreshold(prev, { productId, value }))
   }, [])
@@ -156,26 +125,31 @@ export function useInventory(products, productMap) {
     return productMap[productId]?.initialStock ?? 0
   }, [initialStocks, productMap])
 
-  const setInitialStock = useCallback((productId, value) => {
-    setInitialStocks(prev => applySetInitialStock(prev, { productId, value }))
+  const getInitialStockDate = useCallback((productId) => {
+    const o = initialStocks[productId]
+    return (o && !o.deleted) ? (o.date ?? null) : null
+  }, [initialStocks])
+
+  // value === null borra el ancla (tombstone, vuelve al valor del catálogo).
+  const setInitialStock = useCallback((productId, value, date) => {
+    setInitialStocks(prev => applySetInitialStock(prev, { productId, value, date }))
   }, [])
 
-  const saveDay = useCallback((date, items, type = 'salida') => {
-    setRawHistory(prev => {
-      const existingEntry = prev.find(h => h.date === date && (h.type || 'salida') === type)
-      setStockEntries(prevEntries => stockBumpForSaveDay(prevEntries, { existingEntry, items, type }))
-      return historyForSaveDay(prev, { date, items, type })
-    })
+  // Atajo de "editar stock actual": ancla el ciclo HOY con el valor dado —
+  // desde ahí, cada registro futuro se descuenta/suma normalmente. Es
+  // exactamente `setInitialStock(id, valor, hoy)`, con otro nombre porque
+  // así es como el usuario piensa la acción ("esto es lo que hay ahora").
+  const correctCurrentStock = useCallback((productId, value) => {
+    setInitialStock(productId, value, todayISO())
+  }, [setInitialStock])
 
+  const saveDay = useCallback((date, items, type = 'salida') => {
+    setRawHistory(prev => historyForSaveDay(prev, { date, items, type }))
     localStorage.setItem(KEYS.LAST_DATE, date)
   }, [])
 
   const deleteDay = useCallback((date, type = 'salida') => {
-    setRawHistory(prev => {
-      const entry = prev.find(h => h.date === date && (h.type || 'salida') === type)
-      setStockEntries(prevEntries => stockBumpForDeleteDay(prevEntries, { entry }))
-      return historyForDeleteDay(prev, { date, type })
-    })
+    setRawHistory(prev => historyForDeleteDay(prev, { date, type }))
   }, [])
 
   const getDaysRemaining = useCallback((productId, lookback = 7) =>
@@ -187,29 +161,22 @@ export function useInventory(products, productMap) {
   [stock, history, thresholds, productMap])
 
   // El Excel corporativo nunca sobrescribe el stock que la app calcula sola —
-  // solo alimenta el valor de referencia "inicial: N" (ver detectInitialStockSync
-  // en utils/excelStockSync.js). `changes` es [{ id, newInitial }].
-  const applyInitialStockSync = useCallback((changes) => {
+  // solo alimenta el ancla (valor + fecha) desde la que se cuenta. `changes`
+  // es [{ id, newInitial }], `date` es la fecha (ISO) parseada del header
+  // "Stock inicial" del Excel, única para toda la sincronización.
+  const applyInitialStockSync = useCallback((changes, date) => {
     setInitialStocks(prev => {
       let next = prev
       for (const { id, newInitial } of changes) {
-        next = applySetInitialStock(next, { productId: id, value: newInitial })
+        next = applySetInitialStock(next, { productId: id, value: newInitial, date })
       }
       return next
     })
   }, [])
 
-  const updateStock = useCallback((productId, newQty) => {
-    setStockEntries(prev => applyUpdateStock(prev, { productId, newQty }))
-  }, [])
-
-  const getStockUpdatedAt = useCallback((productId) =>
-    stockEntries[productId]?.updatedAt || 0,
-  [stockEntries])
-
   return {
     stock, history, saveDay, deleteDay, getDaysRemaining, getStatus,
-    applyInitialStockSync, thresholds, setThreshold, updateStock,
-    initialStocks, getInitialStock, setInitialStock, getStockUpdatedAt,
+    applyInitialStockSync, thresholds, setThreshold, correctCurrentStock,
+    initialStocks, getInitialStock, setInitialStock, getInitialStockDate,
   }
 }

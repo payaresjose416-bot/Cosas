@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util'
-import { loadProducts, loadStockEntries, loadThresholds, loadHistory, flattenStock } from '../lib/store.js'
+import { loadProducts, loadInitialStocks, loadThresholds, loadHistory, flattenStock } from '../lib/store.js'
 import { getStatus, getDaysRemaining } from '../../src/core/status.js'
 import { printJSON, printTable } from '../lib/format.js'
 
@@ -7,10 +7,10 @@ export async function run(args) {
   const { values } = parseArgs({ args, options: { json: { type: 'boolean', default: false } } })
 
   const { products, productMap } = await loadProducts()
-  const stockEntries = await loadStockEntries()
+  const initialStocks = await loadInitialStocks()
   const thresholds = await loadThresholds()
   const history = await loadHistory()
-  const stock = flattenStock(stockEntries, products)
+  const stock = flattenStock(initialStocks, history, products, productMap)
 
   const byStatus = { critical: [], low: [], ok: [] }
   for (const p of products) {

@@ -23,13 +23,18 @@ const STATUS = {
   },
 }
 
-export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold, updateStock, getInitialStock, setInitialStock, getStockUpdatedAt }) {
+function todayISO() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+export default function TabDashboard({ stock, history, getDaysRemaining, getStatus, onToast, products, productMap, thresholds, setThreshold, correctCurrentStock, getInitialStock, setInitialStock, getInitialStockDate }) {
   const [filter, setFilter] = useState('todos')
   const [qtyOverride, setQtyOverride] = useState({})
   const [editingId, setEditingId] = useState(null)
   const [editVals, setEditVals] = useState({ critical: '', low: '' })
   const [stockInput, setStockInput] = useState('')
   const [initialStockInput, setInitialStockInput] = useState('')
+  const [initialDateInput, setInitialDateInput] = useState('')
   const { loading, result, error, analyze } = useAI()
 
   const shopping = products
@@ -91,6 +96,7 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
       : { critical: '', low: '' })
     setStockInput(String(stock[p.id] ?? p.initialStock))
     setInitialStockInput(String(getInitialStock(p.id)))
+    setInitialDateInput(getInitialStockDate(p.id) ?? todayISO())
     setEditingId(p.id)
   }
 
@@ -114,9 +120,9 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
       onToast('Cantidad de stock inválida', 'warn')
       return
     }
-    updateStock(p.id, qty)
+    correctCurrentStock(p.id, qty)
     const qtyStr = qty % 1 === 0 ? String(qty) : qty.toFixed(1)
-    onToast(`Stock de ${p.name} actualizado a ${qtyStr} ${p.unit}`, 'success')
+    onToast(`Stock de ${p.name} actualizado a ${qtyStr} ${p.unit} (vigente desde hoy)`, 'success')
   }
 
   const handleSaveInitialStock = (p) => {
@@ -125,9 +131,13 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
       onToast('Cantidad de stock inicial inválida', 'warn')
       return
     }
-    setInitialStock(p.id, qty)
+    if (!initialDateInput) {
+      onToast('Elige la fecha desde la que cuenta este stock inicial', 'warn')
+      return
+    }
+    setInitialStock(p.id, qty, initialDateInput)
     const qtyStr = qty % 1 === 0 ? String(qty) : qty.toFixed(1)
-    onToast(`Stock inicial de ${p.name} actualizado a ${qtyStr} ${p.unit}`, 'success')
+    onToast(`Stock inicial de ${p.name} actualizado a ${qtyStr} ${p.unit}, vigente desde ${initialDateInput}`, 'success')
   }
 
   const handleSaveThreshold = (p) => {
@@ -313,10 +323,10 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
           const initialStock = getInitialStock(p.id)
           const t = thresholds?.[p.id]
           const hasCustom = t && !t.deleted
-          const updatedAt = getStockUpdatedAt?.(p.id)
-          const updatedLabel = updatedAt
-            ? new Date(updatedAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
-            : 'sin registrar'
+          const anchorDate = getInitialStockDate(p.id)
+          const anchorLabel = anchorDate
+            ? new Date(anchorDate + 'T00:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+            : 'sin fecha'
 
           return (
             <div key={p.id} className="border-b border-border last:border-0">
@@ -337,7 +347,10 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
                   </div>
                   <p className="mt-1 text-[10px] font-mono text-text-muted">
                     inicial: {initialStock % 1 === 0 ? initialStock : initialStock.toFixed(1)}
-                    {' · actualizado: '}{updatedLabel}
+                    {' · vigente desde: '}
+                    {/* Sin fecha, getCurrentStock congela el valor (no descuenta
+                        registros) — hay que verlo, no que pase desapercibido. */}
+                    <span className={anchorDate ? '' : 'text-accent-warn font-bold'}>{anchorLabel}</span>
                   </p>
                 </div>
                 <span className="font-mono text-sm text-right text-text-primary tabular-nums">
@@ -415,6 +428,18 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
                       </button>
                       <span className="text-[10px] font-mono text-text-muted w-14 shrink-0">{p.unit}</span>
                     </div>
+                    <label className="block mt-2">
+                      <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
+                        Vigente desde
+                      </span>
+                      <input
+                        type="date"
+                        value={initialDateInput}
+                        onChange={e => setInitialDateInput(e.target.value)}
+                        className="mt-1 w-full bg-surface border border-border rounded-lg px-2 py-1.5
+                          text-text-primary font-mono text-sm focus:outline-none focus:border-accent-blue"
+                      />
+                    </label>
                     <button
                       onClick={() => handleSaveInitialStock(p)}
                       className="w-full mt-2 py-1.5 bg-accent-blue text-bg font-ui font-bold

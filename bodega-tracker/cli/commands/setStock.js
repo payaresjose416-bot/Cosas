@@ -1,10 +1,17 @@
 import { parseArgs } from 'node:util'
-import { loadProducts, loadStockEntries, saveStockEntries, flattenStock } from '../lib/store.js'
-import { applyUpdateStock } from '../../src/core/inventory.js'
+import { loadProducts, loadInitialStocks, loadHistory, saveInitialStocks, flattenStock } from '../lib/store.js'
+import { applySetInitialStock } from '../../src/core/inventory.js'
 import { resolveProduct } from '../lib/resolveProduct.js'
 import { confirmWrite } from '../lib/confirm.js'
 import { printJSON, die } from '../lib/format.js'
 
+function today() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+// Equivalente CLI de "editar stock actual" en el Dashboard: ancla el ciclo
+// HOY con el valor dado — desde ahí, cada registro futuro se descuenta/suma
+// normalmente. No es un contador aparte: es setInitialStock(id, valor, hoy).
 export async function run(args) {
   const { values, positionals } = parseArgs({
     args,
@@ -21,14 +28,16 @@ export async function run(args) {
   const newQty = Number(rawQty)
   if (!Number.isFinite(newQty) || newQty < 0) die(`Cantidad inválida: "${rawQty}"`)
 
-  const { products } = await loadProducts()
+  const { products, productMap } = await loadProducts()
   const product = resolveProduct(query, products)
-  const stockEntries = await loadStockEntries()
-  const stock = flattenStock(stockEntries, products)
+  const initialStocks = await loadInitialStocks()
+  const history = await loadHistory()
+  const stock = flattenStock(initialStocks, history, products, productMap)
   const current = stock[product.id]
+  const date = today()
 
   const preview = () => {
-    console.error(`Fijar stock de "${product.name}" (${product.id}): ${current} -> ${newQty}`)
+    console.error(`Fijar stock de "${product.name}" (${product.id}): ${current} -> ${newQty} (vigente desde ${date})`)
   }
 
   const proceed = await confirmWrite({
@@ -37,9 +46,9 @@ export async function run(args) {
   })
   if (!proceed) return
 
-  const nextStock = applyUpdateStock(stockEntries, { productId: product.id, newQty })
-  await saveStockEntries(nextStock)
+  const next = applySetInitialStock(initialStocks, { productId: product.id, value: newQty, date })
+  await saveInitialStocks(next)
 
-  if (values.json) printJSON({ ok: true, id: product.id, stock: newQty })
-  else console.log(`Stock actualizado: ${product.name} = ${newQty}`)
+  if (values.json) printJSON({ ok: true, id: product.id, stock: newQty, date })
+  else console.log(`Stock actualizado: ${product.name} = ${newQty} (vigente desde ${date})`)
 }

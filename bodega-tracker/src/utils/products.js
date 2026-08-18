@@ -1,6 +1,5 @@
 // Productos reales de Inversiones en Salud - Coosalud Inversa S.A.
 // excelNames: variantes del nombre que aparecen en la columna B del Excel corporativo
-export const STOCK_VERSION = 3
 
 export const PRODUCTS = [
   {

@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util'
-import { loadProducts, loadStockEntries, loadHistory, saveStockEntries, saveHistory } from '../lib/store.js'
-import { historyForDeleteDay, stockBumpForDeleteDay } from '../../src/core/inventory.js'
+import { loadProducts, loadHistory, saveHistory } from '../lib/store.js'
+import { historyForDeleteDay } from '../../src/core/inventory.js'
 import { confirmWrite } from '../lib/confirm.js'
 import { printJSON, die } from '../lib/format.js'
 
@@ -27,7 +27,7 @@ export async function run(args) {
   const preview = () => {
     console.error(`Borrar ${values.tipo} del ${date}:`)
     for (const i of entry.items) console.error(`  - ${productMap[i.id]?.name ?? i.id}: ${i.qty}`)
-    console.error('(se revierte el efecto en stock)')
+    console.error('(el stock calculado se ajusta solo, no hay nada que revertir aparte)')
   }
 
   const proceed = await confirmWrite({
@@ -36,11 +36,7 @@ export async function run(args) {
   })
   if (!proceed) return
 
-  const stockEntries = await loadStockEntries()
-  const nextStock = stockBumpForDeleteDay(stockEntries, { entry })
   const nextHistory = historyForDeleteDay(rawHistory, { date, type: values.tipo })
-
-  await saveStockEntries(nextStock)
   await saveHistory(nextHistory)
 
   if (values.json) printJSON({ ok: true, date, type: values.tipo })

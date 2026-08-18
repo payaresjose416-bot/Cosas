@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { writeToExcel, generateTSV } from '../utils/excelExport.js'
 import { detectNewProducts } from '../utils/excelDetect.js'
 import { detectInitialStockSync } from '../utils/excelStockSync.js'
+import { slugify } from '../core/catalog.js'
 
 const MONTHS_ES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -14,7 +15,7 @@ const SKIP_REASONS = {
   'no-numerico': 'no numérico',
 }
 
-export default function TabExportar({ history, stock, onToast, products, addProducts, applyInitialStockSync, getInitialStock }) {
+export default function TabExportar({ history, stock, onToast, products, addProducts, applyInitialStockSync, getInitialStock, getInitialStockDate, setInitialStock }) {
   const handleDownloadStock = () => {
     const date = new Date().toISOString().slice(0, 10)
     const lines = [`Stock restante — ${date}`, '']
@@ -42,6 +43,7 @@ export default function TabExportar({ history, stock, onToast, products, addProd
   const [stockSyncResult, setStockSyncResult] = useState(null)
   const [selectedStockChanges, setSelectedStockChanges] = useState(new Set())
   const [selectedStockNew, setSelectedStockNew] = useState(new Set())
+  const [manualDateInput, setManualDateInput] = useState('')
   const fileRef = useRef()
 
   const filteredHistory = history.filter(h => {
@@ -116,8 +118,10 @@ export default function TabExportar({ history, stock, onToast, products, addProd
   const handleReviewStockSync = () => {
     if (!excelBuffer) { onToast('Carga el archivo .xlsx primero', 'warn'); return }
     try {
-      const initialStockMap = Object.fromEntries(products.map(p => [p.id, getInitialStock(p.id)]))
-      const result = detectInitialStockSync(excelBuffer, products, initialStockMap)
+      const currentAnchors = Object.fromEntries(
+        products.map(p => [p.id, { value: getInitialStock(p.id), date: getInitialStockDate(p.id) }])
+      )
+      const result = detectInitialStockSync(excelBuffer, products, currentAnchors)
       // Siempre se muestra el panel, incluso sin cambios — un toast genérico de
       // "no se detectaron cambios" es indistinguible de "no se leyó nada" (ej.
       // porque el nombre del producto no estaba en la columna esperada), y esa
@@ -125,6 +129,7 @@ export default function TabExportar({ history, stock, onToast, products, addProd
       setStockSyncResult(result)
       setSelectedStockChanges(new Set(result.existingChanges.map(c => c.id)))
       setSelectedStockNew(new Set(result.newProducts.map(n => n.name)))
+      setManualDateInput(result.initialDate ?? '')
       setDetectedProducts([])
       setSelectedNew(new Set())
     } catch (e) {
@@ -152,28 +157,38 @@ export default function TabExportar({ history, stock, onToast, products, addProd
 
   const handleApplyStockSync = () => {
     if (!stockSyncResult) return
+    const effectiveDate = stockSyncResult.initialDate ?? manualDateInput
+    if (!effectiveDate) {
+      onToast('No se pudo leer la fecha del Excel — escríbela antes de aplicar', 'warn')
+      return
+    }
     const changesToApply = stockSyncResult.existingChanges.filter(c => selectedStockChanges.has(c.id))
     const newToAdd = stockSyncResult.newProducts.filter(n => selectedStockNew.has(n.name))
 
     if (changesToApply.length > 0) {
-      applyInitialStockSync(changesToApply.map(({ id, newInitial }) => ({ id, newInitial })))
+      applyInitialStockSync(changesToApply.map(({ id, newInitial }) => ({ id, newInitial })), effectiveDate)
     }
     if (newToAdd.length > 0) {
       addProducts(newToAdd)
+      // addProducts no devuelve los productos creados, pero su id se genera
+      // con el mismo slugify(name) que buildCustomProducts usa internamente.
+      for (const n of newToAdd) setInitialStock(slugify(n.name), n.stock, effectiveDate)
     }
     onToast(
-      `Stock inicial actualizado: ${changesToApply.length} producto(s), ${newToAdd.length} nuevo(s)`,
+      `Stock inicial actualizado: ${changesToApply.length} producto(s), ${newToAdd.length} nuevo(s) — vigente desde ${effectiveDate}`,
       'success'
     )
     setStockSyncResult(null)
     setSelectedStockChanges(new Set())
     setSelectedStockNew(new Set())
+    setManualDateInput('')
   }
 
   const handleDismissStockSync = () => {
     setStockSyncResult(null)
     setSelectedStockChanges(new Set())
     setSelectedStockNew(new Set())
+    setManualDateInput('')
   }
 
   const handleExport = () => {
@@ -379,6 +394,26 @@ export default function TabExportar({ history, stock, onToast, products, addProd
               {stockSyncResult.rowsScanned} fila(s) revisadas · {stockSyncResult.rowsWithName} con nombre de producto
             </p>
 
+            {stockSyncResult.initialDate ? (
+              <p className="text-[11px] font-mono text-accent-green mt-1">
+                vigente desde: {stockSyncResult.initialDate} (leída del Excel)
+              </p>
+            ) : (
+              <div className="mt-2">
+                <p className="text-xs text-accent-danger font-ui leading-relaxed">
+                  No se pudo leer la fecha del encabezado "{stockSyncResult.initialColHeader}".
+                  Escríbela a mano antes de aplicar:
+                </p>
+                <input
+                  type="date"
+                  value={manualDateInput}
+                  onChange={e => setManualDateInput(e.target.value)}
+                  className="mt-1.5 w-full bg-surface border border-accent-danger/40 rounded-lg px-2 py-1.5
+                    text-text-primary font-mono text-sm focus:outline-none focus:border-accent-danger"
+                />
+              </div>
+            )}
+
             {stockSyncResult.rowsWithName === 0 && (
               <p className="text-xs text-accent-danger font-ui mt-2 leading-relaxed">
                 No se leyó ningún nombre de producto en la columna {stockSyncResult.nameColLetter}.
@@ -468,7 +503,10 @@ export default function TabExportar({ history, stock, onToast, products, addProd
             <div className="flex gap-2 mt-3">
               <button
                 onClick={handleApplyStockSync}
-                disabled={selectedStockChanges.size === 0 && selectedStockNew.size === 0}
+                disabled={
+                  (selectedStockChanges.size === 0 && selectedStockNew.size === 0) ||
+                  !(stockSyncResult.initialDate ?? manualDateInput)
+                }
                 className="flex-1 py-2 bg-accent-green text-bg font-ui font-bold
                   rounded-lg text-sm disabled:opacity-30 active:opacity-90 transition-opacity"
               >

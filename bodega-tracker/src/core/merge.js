@@ -4,21 +4,6 @@
 // sync" para las reglas que este archivo debe seguir (LWW por registro,
 // tombstones, la nube nunca se encoge).
 
-export function toEntries(qtyMap) {
-  return Object.fromEntries(Object.entries(qtyMap || {}).map(([id, v]) =>
-    [id, (v && typeof v === 'object') ? v : { qty: Number(v) || 0, updatedAt: 0 }]
-  ))
-}
-
-export function mergeStock(local, cloud) {
-  const next = { ...toEntries(local) }
-  for (const [id, entry] of Object.entries(toEntries(cloud))) {
-    const lv = next[id]
-    if (!lv || (entry.updatedAt || 0) > (lv.updatedAt || 0)) next[id] = entry
-  }
-  return next
-}
-
 // LWW por clave: gana la versión con updatedAt más reciente (incluye tombstones
 // de borrado, para que un "eliminar" no resucite al sincronizar). Entradas
 // legacy sin updatedAt cuentan como 0 — en empate gana lo local (unión, v11).

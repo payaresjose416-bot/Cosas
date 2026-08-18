@@ -4,7 +4,7 @@ import { writeToExcel } from '../../src/utils/excelExport.js'
 import { detectInitialStockSync } from '../../src/utils/excelStockSync.js'
 import { detectNewProducts } from '../../src/utils/excelDetect.js'
 import { applySetInitialStock } from '../../src/core/inventory.js'
-import { loadProducts, loadHistory, loadInitialStocks, saveInitialStocks, flattenInitialStocks } from '../lib/store.js'
+import { loadProducts, loadHistory, loadInitialStocks, saveInitialStocks } from '../lib/store.js'
 import { confirmWrite } from '../lib/confirm.js'
 import { printTable, printJSON, die } from '../lib/format.js'
 
@@ -40,21 +40,35 @@ async function exportar(args) {
 async function syncStock(args) {
   const { values, positionals } = parseArgs({
     args,
-    options: { yes: { type: 'boolean', default: false }, 'dry-run': { type: 'boolean', default: false }, json: { type: 'boolean', default: false } },
+    options: {
+      yes: { type: 'boolean', default: false }, 'dry-run': { type: 'boolean', default: false }, json: { type: 'boolean', default: false },
+      fecha: { type: 'string' }, // fallback si no se puede parsear la fecha del header del Excel
+    },
     allowPositionals: true,
   })
   const [filePath] = positionals
-  if (!filePath) die('Uso: bodega excel sync-stock <archivo.xlsx>')
+  if (!filePath) die('Uso: bodega excel sync-stock <archivo.xlsx> [--fecha YYYY-MM-DD]')
 
   const buf = readFile(filePath)
   const { products } = await loadProducts()
   const initialStocks = await loadInitialStocks()
-  const initialStockMap = flattenInitialStocks(initialStocks, products)
+  const currentAnchors = Object.fromEntries(products.map(p => {
+    const o = initialStocks[p.id]
+    return [p.id, { value: (o && !o.deleted) ? o.value : (p.initialStock ?? 0), date: (o && !o.deleted) ? (o.date ?? null) : null }]
+  }))
 
   const {
-    existingChanges, newProducts, skipped, initialColLetter, initialColHeader,
+    existingChanges, newProducts, skipped, initialColLetter, initialColHeader, initialDate,
     nameColLetter, nameColHeader, rowsScanned, rowsWithName,
-  } = detectInitialStockSync(buf, products, initialStockMap)
+  } = detectInitialStockSync(buf, products, currentAnchors)
+
+  const effectiveDate = initialDate ?? values.fecha
+  if (!effectiveDate && existingChanges.length > 0) {
+    die(
+      `No se pudo leer la fecha del encabezado "${initialColHeader}". ` +
+      'Pásala a mano con --fecha YYYY-MM-DD.'
+    )
+  }
 
   // Los saltados son el fallo silencioso que más duele: su stock inicial queda
   // sin corregir y el dashboard sigue mostrando un número viejo. Siempre avisarlos.
@@ -88,7 +102,7 @@ async function syncStock(args) {
   }
 
   const preview = () => {
-    console.error(`Cambios de stock inicial detectados en el Excel (columna ${initialColLetter} — "${initialColHeader}"). Esto NO toca el stock actual:`)
+    console.error(`Cambios de stock inicial detectados en el Excel (columna ${initialColLetter} — "${initialColHeader}"), vigentes desde ${effectiveDate}. Esto NO toca el stock actual:`)
     printTable(['PRODUCTO', 'ANTES', 'DESPUÉS'], existingChanges.map(c => [c.name, c.oldInitial, c.newInitial]))
     if (newProducts.length) console.error(`\n(${newProducts.length} producto(s) nuevos en el Excel, sin match en el catálogo — usa "bodega producto-nuevo" para agregarlos)`)
     warnSkipped()
@@ -102,12 +116,12 @@ async function syncStock(args) {
 
   let nextInitialStocks = initialStocks
   for (const c of existingChanges) {
-    nextInitialStocks = applySetInitialStock(nextInitialStocks, { productId: c.id, value: c.newInitial })
+    nextInitialStocks = applySetInitialStock(nextInitialStocks, { productId: c.id, value: c.newInitial, date: effectiveDate })
   }
   await saveInitialStocks(nextInitialStocks)
 
-  if (values.json) printJSON({ ok: true, applied: existingChanges, newProducts, skipped })
-  else console.log(`Aplicado: ${existingChanges.length} producto(s) actualizados (solo stock inicial).`)
+  if (values.json) printJSON({ ok: true, applied: existingChanges, newProducts, skipped, date: effectiveDate })
+  else console.log(`Aplicado: ${existingChanges.length} producto(s) actualizados (solo stock inicial, vigente desde ${effectiveDate}).`)
 }
 
 async function detectar(args) {

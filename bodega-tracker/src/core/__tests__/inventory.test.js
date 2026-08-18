@@ -1,85 +1,52 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  applySaveDay, applyDeleteDay, applyUpdateStock, applySetThreshold, applySetInitialStock,
-  stockBumpForDeleteDay,
-} from '../inventory.js'
+import { historyForSaveDay, historyForDeleteDay, applySetThreshold, applySetInitialStock } from '../inventory.js'
 
-test('applySaveDay: registra una salida nueva y descuenta stock', () => {
-  const stockEntries = { detergente: { qty: 10, updatedAt: 0 } }
-  const { stockEntries: nextStock, rawHistory } = applySaveDay(stockEntries, [], {
+test('historyForSaveDay: registra una salida nueva en el historial', () => {
+  const rawHistory = historyForSaveDay([], {
     date: '2026-01-01', items: [{ id: 'detergente', qty: 3 }], type: 'salida', now: 1000,
   })
-  assert.equal(nextStock.detergente.qty, 7)
-  assert.equal(nextStock.detergente.updatedAt, 1000)
   assert.equal(rawHistory.length, 1)
   assert.equal(rawHistory[0].items[0].qty, 3)
+  assert.equal(rawHistory[0].updatedAt, 1000)
 })
 
-test('applySaveDay: al editar un día ya registrado, revierte el efecto anterior antes de aplicar el nuevo', () => {
-  const stockEntries = { detergente: { qty: 7, updatedAt: 1000 } } // ya se descontaron 3 de un 10 inicial
+test('historyForSaveDay: al editar un día ya registrado, reemplaza (no duplica) la entrada', () => {
   const rawHistory = [{ date: '2026-01-01', type: 'salida', items: [{ id: 'detergente', qty: 3 }], updatedAt: 1000 }]
-  const { stockEntries: nextStock, rawHistory: nextHistory } = applySaveDay(stockEntries, rawHistory, {
+  const nextHistory = historyForSaveDay(rawHistory, {
     date: '2026-01-01', items: [{ id: 'detergente', qty: 5 }], type: 'salida', now: 2000,
   })
-  // revierte +3 (vuelve a 10) y aplica -5 => 5
-  assert.equal(nextStock.detergente.qty, 5)
   assert.equal(nextHistory.length, 1)
   assert.equal(nextHistory[0].items[0].qty, 5)
 })
 
-test('applySaveDay: entrada suma stock en vez de restar', () => {
-  const stockEntries = { detergente: { qty: 2, updatedAt: 0 } }
-  const { stockEntries: nextStock } = applySaveDay(stockEntries, [], {
-    date: '2026-01-01', items: [{ id: 'detergente', qty: 4 }], type: 'entrada', now: 1000,
-  })
-  assert.equal(nextStock.detergente.qty, 6)
-})
-
-test('applySaveDay: el stock nunca baja de cero', () => {
-  const stockEntries = { detergente: { qty: 1, updatedAt: 0 } }
-  const { stockEntries: nextStock } = applySaveDay(stockEntries, [], {
-    date: '2026-01-01', items: [{ id: 'detergente', qty: 5 }], type: 'salida', now: 1000,
-  })
-  assert.equal(nextStock.detergente.qty, 0)
-})
-
-test('applyDeleteDay: tombstonea el registro (no lo elimina) y revierte el efecto en stock', () => {
-  const stockEntries = { detergente: { qty: 7, updatedAt: 1000 } }
+test('historyForDeleteDay: tombstonea el registro (no lo elimina)', () => {
   const rawHistory = [{ date: '2026-01-01', type: 'salida', items: [{ id: 'detergente', qty: 3 }], updatedAt: 1000 }]
-  const { stockEntries: nextStock, rawHistory: nextHistory } = applyDeleteDay(stockEntries, rawHistory, {
-    date: '2026-01-01', type: 'salida', now: 2000,
-  })
-  assert.equal(nextStock.detergente.qty, 10) // se revierte la salida de 3
+  const nextHistory = historyForDeleteDay(rawHistory, { date: '2026-01-01', type: 'salida', now: 2000 })
   assert.equal(nextHistory.length, 1)
   assert.equal(nextHistory[0].deleted, true)
   assert.equal(nextHistory[0].items.length, 0)
 })
 
-test('applyDeleteDay: borrar un día que no existe no revienta y solo agrega el tombstone', () => {
-  const stockEntries = { detergente: { qty: 5, updatedAt: 0 } }
-  const { stockEntries: nextStock, rawHistory } = applyDeleteDay(stockEntries, [], {
-    date: '2026-01-01', type: 'salida', now: 1000,
-  })
-  assert.equal(nextStock.detergente.qty, 5)
-  assert.equal(rawHistory[0].deleted, true)
+test('historyForDeleteDay: borrar un día que no existe no revienta y solo agrega el tombstone', () => {
+  const nextHistory = historyForDeleteDay([], { date: '2026-01-01', type: 'salida', now: 1000 })
+  assert.equal(nextHistory[0].deleted, true)
 })
 
-test('applyUpdateStock: fija stock a mano con updatedAt fresco y sin negativos', () => {
-  const stockEntries = { detergente: { qty: 5, updatedAt: 0 } }
-  const next = applyUpdateStock(stockEntries, { productId: 'detergente', newQty: -3, now: 1000 })
-  assert.equal(next.detergente.qty, 0)
-  assert.equal(next.detergente.updatedAt, 1000)
-})
-
-test('applySetInitialStock: fija el stock inicial con updatedAt fresco y sin negativos', () => {
-  const next = applySetInitialStock({}, { productId: 'detergente', value: -3, now: 1000 })
+test('applySetInitialStock: fija valor y fecha con updatedAt fresco y sin negativos', () => {
+  const next = applySetInitialStock({}, { productId: 'detergente', value: -3, date: '2026-06-30', now: 1000 })
   assert.equal(next.detergente.value, 0)
+  assert.equal(next.detergente.date, '2026-06-30')
   assert.equal(next.detergente.updatedAt, 1000)
+})
+
+test('applySetInitialStock: sin fecha, guarda date: null (ancla congelada, ver getCurrentStock)', () => {
+  const next = applySetInitialStock({}, { productId: 'detergente', value: 5, now: 1000 })
+  assert.equal(next.detergente.date, null)
 })
 
 test('applySetInitialStock: valor null crea un tombstone de borrado (vuelve al valor del catálogo)', () => {
-  const initialStocks = { detergente: { value: 10, updatedAt: 0 } }
+  const initialStocks = { detergente: { value: 10, date: '2026-06-30', updatedAt: 0 } }
   const next = applySetInitialStock(initialStocks, { productId: 'detergente', value: null, now: 1000 })
   assert.equal(next.detergente.deleted, true)
   assert.equal(next.detergente.updatedAt, 1000)
@@ -96,18 +63,4 @@ test('applySetThreshold: valor objeto normaliza a número y marca updatedAt', ()
   const next = applySetThreshold({}, { productId: 'detergente', value: { critical: '2', low: '5' }, now: 1000 })
   assert.equal(next.detergente.critical, 2)
   assert.equal(next.detergente.low, 5)
-})
-
-// La app dejó de crear registros de tipo 'sync' (una versión anterior
-// sincronizaba el stock actual desde la columna Restantes del Excel; ahora el
-// Excel solo alimenta el "stock inicial" vía applySetInitialStock, nunca el
-// stock que se calcula con los registros). Este test cubre la compatibilidad
-// hacia atrás: si un dispositivo todavía tiene en su Historial sincronizado
-// uno de esos registros 'sync' antiguos y el usuario lo borra, no debe
-// revertir ningún stock — es solo bitácora, no un movimiento real.
-test('stockBumpForDeleteDay: un registro sync heredado no revierte stock al borrarse (es solo bitácora)', () => {
-  const stockEntries = { azucar: { qty: 4, updatedAt: 1000 } }
-  const entry = { date: '2026-06-28', type: 'sync', items: [{ id: 'azucar', oldStock: 0, newStock: 4 }] }
-  const next = stockBumpForDeleteDay(stockEntries, { entry, now: 2000 })
-  assert.equal(next.azucar.qty, 4) // sin cambios
 })
