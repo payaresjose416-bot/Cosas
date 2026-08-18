@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { loadFromCloud } from '../utils/supabase.js'
 import { useSync } from './useSync.js'
-import { toEntries, mergeThresholds, mergeHistory } from '../core/merge.js'
+import { mergeThresholds, mergeHistory } from '../core/merge.js'
 import {
   historyForSaveDay, historyForDeleteDay, applySetThreshold, applySetInitialStock,
 } from '../core/inventory.js'
@@ -107,41 +106,14 @@ export function useInventory(products, productMap) {
     syncInitialStocks(initialStocks)
   }, [initialStocks, syncInitialStocks])
 
-  // Migración de arranque, una sola vez por sesión: productos que traen un
-  // ancla sin `date` (formato viejo, de antes de que el stock se calculara)
-  // se anclan con el último valor que la app venía calculando con el modelo
-  // anterior — leído una última vez de la clave nube legada 'stock', ya
-  // retirada — y fecha de hoy. Así el Dashboard no cambia de número el día
-  // del despliegue; el número solo se corrige cuando el usuario sincroniza
-  // el Excel real (que trae el ancla y la fecha reales). Productos sin dato
-  // legado quedan sin `date` (ver getCurrentStock: valor congelado) hasta
-  // que se corrijan a mano o por Excel.
-  const migratedLegacyStock = useRef(false)
-  useEffect(() => {
-    if (migratedLegacyStock.current) return
-    const needsMigration = products.some(p => {
-      const o = initialStocks[p.id]
-      return !o || (!o.deleted && !o.date)
-    })
-    if (!needsMigration) return
-    migratedLegacyStock.current = true
-    loadFromCloud('stock').then(legacyRaw => {
-      if (!legacyRaw) return
-      const legacy = toEntries(legacyRaw)
-      const today = todayISO()
-      setInitialStocks(prev => {
-        let next = prev
-        for (const p of products) {
-          const o = next[p.id]
-          if (o && !o.deleted && o.date) continue
-          const legacyQty = legacy[p.id]?.qty
-          if (legacyQty == null) continue
-          next = applySetInitialStock(next, { productId: p.id, value: legacyQty, date: today })
-        }
-        return next
-      })
-    })
-  }, [products, initialStocks])
+  // NO agregar aquí ninguna migración/siembra automática del ancla. Hubo una
+  // (leía la clave nube legada 'stock' y anclaba con fecha de hoy) y causó un
+  // bug real: corría al montar usando `initialStocks` de localStorage, sin
+  // esperar a que la carga de la nube resolviera, y escribía con un
+  // `Date.now()` fresco — que por LWW le ganaba al ancla real recién traída
+  // del Excel, devolviendo la fecha a "hoy" y dejando el stock congelado sin
+  // descontar ninguna salida. El ancla solo debe cambiar por acción explícita
+  // del usuario: sync del Excel, "editar stock inicial" o "editar stock actual".
 
   const setThreshold = useCallback((productId, value) => {
     setThresholds(prev => applySetThreshold(prev, { productId, value }))

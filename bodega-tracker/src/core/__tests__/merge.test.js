@@ -1,11 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { toEntries, mergeThresholds, mergeHistory, mergeProducts } from '../merge.js'
-
-test('toEntries normaliza números planos (formato legacy) y objetos {qty, updatedAt}', () => {
-  const out = toEntries({ a: 5, b: { qty: 3, updatedAt: 100 } })
-  assert.deepEqual(out, { a: { qty: 5, updatedAt: 0 }, b: { qty: 3, updatedAt: 100 } })
-})
+import { mergeThresholds, mergeHistory, mergeProducts } from '../merge.js'
 
 // initialStocks usa mergeThresholds tal cual (LWW por objeto completo) para su
 // shape {value, date, updatedAt} — value y date viajan juntos bajo el mismo

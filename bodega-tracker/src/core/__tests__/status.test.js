@@ -49,6 +49,21 @@ test('getCurrentStock: nunca baja de cero', () => {
   assert.equal(stock, 0)
 })
 
+// Regresión: los registros heredados `type: 'sync'` (bitácora de una versión
+// anterior que sincronizaba stock desde Excel) traen items {oldStock, newStock}
+// SIN `qty`. Sin el guard de tipo, `delta += item.qty` sumaba undefined y todo
+// el stock del producto se volvía NaN.
+test('getCurrentStock: ignora registros heredados type "sync" y no devuelve NaN', () => {
+  const initialStocks = { detergente: { value: 10, date: '2026-06-30', updatedAt: 100 } }
+  const history = [
+    { date: '2026-07-01', type: 'sync', items: [{ id: 'detergente', oldStock: 0, newStock: 4 }] },
+    { date: '2026-07-02', type: 'salida', items: [{ id: 'detergente', qty: 3 }] },
+  ]
+  const stock = getCurrentStock('detergente', { initialStocks, history, productMap })
+  assert.ok(!Number.isNaN(stock), 'el stock no debe ser NaN')
+  assert.equal(stock, 7) // 10 - 3; el registro 'sync' se ignora por completo
+})
+
 test('getCurrentStock: ancla tombstoneada (deleted) cae al catálogo', () => {
   const initialStocks = { detergente: { deleted: true, updatedAt: 100 } }
   const stock = getCurrentStock('detergente', { initialStocks, history: [], productMap })

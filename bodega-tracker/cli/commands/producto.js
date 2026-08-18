@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util'
-import { loadProducts, loadInitialStocks, loadThresholds, loadHistory, flattenStock, migrateLegacyStock } from '../lib/store.js'
+import { loadProducts, loadInitialStocks, loadThresholds, loadHistory, flattenStock } from '../lib/store.js'
 import { getStatus, getDaysRemaining } from '../../src/core/status.js'
 import { resolveProduct } from '../lib/resolveProduct.js'
 import { printJSON, statusLabel, die } from '../lib/format.js'
@@ -14,10 +14,9 @@ export async function run(args) {
   const { products, productMap } = await loadProducts()
   const product = resolveProduct(query, products) // lanza CliError si es ambiguo o no existe
 
-  let initialStocks = await loadInitialStocks()
+  const initialStocks = await loadInitialStocks()
   const thresholds = await loadThresholds()
   const history = await loadHistory()
-  initialStocks = await migrateLegacyStock(initialStocks, products)
   const stock = flattenStock(initialStocks, history, products, productMap)
 
   const status = getStatus(product.id, { stock, history, thresholds, productMap })

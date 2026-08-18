@@ -4,16 +4,6 @@
 // sync" para las reglas que este archivo debe seguir (LWW por registro,
 // tombstones, la nube nunca se encoge).
 
-// Normaliza un mapa legado `{id: qty}` (número plano, formato viejo de la
-// clave nube 'stock', ya retirada) a `{id: {qty, updatedAt}}`. Solo la usa la
-// migración de arranque en useInventory.js/cli/lib/store.js para leer esa
-// clave una última vez — no participa de ningún merge en curso.
-export function toEntries(qtyMap) {
-  return Object.fromEntries(Object.entries(qtyMap || {}).map(([id, v]) =>
-    [id, (v && typeof v === 'object') ? v : { qty: Number(v) || 0, updatedAt: 0 }]
-  ))
-}
-
 // LWW por clave: gana la versión con updatedAt más reciente (incluye tombstones
 // de borrado, para que un "eliminar" no resucite al sincronizar). Entradas
 // legacy sin updatedAt cuentan como 0 — en empate gana lo local (unión, v11).

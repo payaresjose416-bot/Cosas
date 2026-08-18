@@ -4,8 +4,7 @@
 // en useSync.syncToCloud (src/hooks/useSync.js) — así una escritura del CLI
 // nunca pisa un cambio más reciente hecho desde el navegador.
 import { loadFromCloud, saveToCloud } from '../../src/utils/supabase.js'
-import { toEntries, mergeHistory, mergeThresholds, mergeProducts } from '../../src/core/merge.js'
-import { applySetInitialStock } from '../../src/core/inventory.js'
+import { mergeHistory, mergeThresholds, mergeProducts } from '../../src/core/merge.js'
 import { getCurrentStock } from '../../src/core/status.js'
 import { BASE_PRODUCTS } from '../../src/utils/products.js'
 
@@ -68,33 +67,7 @@ export function flattenInitialStocks(initialStocks, products) {
   return out
 }
 
-// Migración de arranque, igual que en la app web (useInventory.js): productos
-// con ancla sin `date` (formato viejo) se anclan con el último stock que el
-// modelo anterior calculaba (leído una última vez de la clave nube legada
-// 'stock', ya retirada) y fecha de hoy. Idempotente — si ya está migrado, no
-// hace ninguna escritura.
-export async function migrateLegacyStock(initialStocks, products) {
-  const needsMigration = products.some(p => {
-    const o = initialStocks[p.id]
-    return !o || (!o.deleted && !o.date)
-  })
-  if (!needsMigration) return initialStocks
-
-  const legacyRaw = await loadFromCloud('stock')
-  if (!legacyRaw) return initialStocks
-  const legacy = toEntries(legacyRaw)
-  const today = new Date().toISOString().slice(0, 10)
-
-  let next = initialStocks
-  let changed = false
-  for (const p of products) {
-    const o = next[p.id]
-    if (o && !o.deleted && o.date) continue
-    const legacyQty = legacy[p.id]?.qty
-    if (legacyQty == null) continue
-    next = applySetInitialStock(next, { productId: p.id, value: legacyQty, date: today })
-    changed = true
-  }
-  if (changed) await saveInitialStocks(next)
-  return next
-}
+// NO agregar aquí ninguna migración/siembra automática del ancla — ver la nota
+// equivalente en src/hooks/useInventory.js. El ancla solo cambia por acción
+// explícita: `bodega excel sync-stock`, `bodega set-stock`, o los editores del
+// Dashboard en la app web.

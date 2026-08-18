@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util'
-import { loadProducts, loadInitialStocks, loadHistory, saveInitialStocks, flattenStock, migrateLegacyStock } from '../lib/store.js'
+import { loadProducts, loadInitialStocks, loadHistory, saveInitialStocks, flattenStock } from '../lib/store.js'
 import { applySetInitialStock } from '../../src/core/inventory.js'
 import { resolveProduct } from '../lib/resolveProduct.js'
 import { confirmWrite } from '../lib/confirm.js'
@@ -30,9 +30,8 @@ export async function run(args) {
 
   const { products, productMap } = await loadProducts()
   const product = resolveProduct(query, products)
-  let initialStocks = await loadInitialStocks()
+  const initialStocks = await loadInitialStocks()
   const history = await loadHistory()
-  initialStocks = await migrateLegacyStock(initialStocks, products)
   const stock = flattenStock(initialStocks, history, products, productMap)
   const current = stock[product.id]
   const date = today()

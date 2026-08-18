@@ -347,7 +347,10 @@ export default function TabDashboard({ stock, history, getDaysRemaining, getStat
                   </div>
                   <p className="mt-1 text-[10px] font-mono text-text-muted">
                     inicial: {initialStock % 1 === 0 ? initialStock : initialStock.toFixed(1)}
-                    {' · vigente desde: '}{anchorLabel}
+                    {' · vigente desde: '}
+                    {/* Sin fecha, getCurrentStock congela el valor (no descuenta
+                        registros) — hay que verlo, no que pase desapercibido. */}
+                    <span className={anchorDate ? '' : 'text-accent-warn font-bold'}>{anchorLabel}</span>
                   </p>
                 </div>
                 <span className="font-mono text-sm text-right text-text-primary tabular-nums">
