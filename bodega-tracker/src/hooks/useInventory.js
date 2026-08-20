@@ -143,8 +143,8 @@ export function useInventory(products, productMap) {
     setInitialStock(productId, value, todayISO())
   }, [setInitialStock])
 
-  const saveDay = useCallback((date, items, type = 'salida') => {
-    setRawHistory(prev => historyForSaveDay(prev, { date, items, type }))
+  const saveDay = useCallback((date, items, type = 'salida', { merge = false } = {}) => {
+    setRawHistory(prev => historyForSaveDay(prev, { date, items, type, merge }))
     localStorage.setItem(KEYS.LAST_DATE, date)
   }, [])
 

@@ -20,6 +20,23 @@ test('historyForSaveDay: al editar un día ya registrado, reemplaza (no duplica)
   assert.equal(nextHistory[0].items[0].qty, 5)
 })
 
+test('historyForSaveDay: con merge, un segundo registro del mismo día combina cantidades en vez de reemplazar', () => {
+  const rawHistory = [{ date: '2026-01-01', type: 'salida', items: [{ id: 'detergente', qty: 3 }], updatedAt: 1000 }]
+  const nextHistory = historyForSaveDay(rawHistory, {
+    date: '2026-01-01', items: [{ id: 'detergente', qty: 2 }, { id: 'cloro', qty: 1 }], type: 'salida', merge: true, now: 2000,
+  })
+  assert.equal(nextHistory.length, 1)
+  assert.deepEqual(nextHistory[0].items, [{ id: 'detergente', qty: 5 }, { id: 'cloro', qty: 1 }])
+})
+
+test('historyForSaveDay: merge sin entrada previa ese día/tipo simplemente registra los items', () => {
+  const nextHistory = historyForSaveDay([], {
+    date: '2026-01-01', items: [{ id: 'detergente', qty: 3 }], type: 'salida', merge: true, now: 1000,
+  })
+  assert.equal(nextHistory.length, 1)
+  assert.deepEqual(nextHistory[0].items, [{ id: 'detergente', qty: 3 }])
+})
+
 test('historyForDeleteDay: tombstonea el registro (no lo elimina)', () => {
   const rawHistory = [{ date: '2026-01-01', type: 'salida', items: [{ id: 'detergente', qty: 3 }], updatedAt: 1000 }]
   const nextHistory = historyForDeleteDay(rawHistory, { date: '2026-01-01', type: 'salida', now: 2000 })

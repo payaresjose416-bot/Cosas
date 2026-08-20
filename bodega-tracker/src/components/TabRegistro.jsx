@@ -10,6 +10,11 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
   const [quantities, setQuantities] = useState({})
   const [search, setSearch] = useState('')
   const [showPreview, setShowPreview] = useState(false)
+  // true mientras el formulario refleja una entrada existente abierta desde
+  // Historial ("editar") — ahí guardar debe reemplazar el día, no combinar.
+  // Un registro nuevo hecho desde esta pestaña (sin pasar por Historial) debe
+  // combinarse con lo que ya hubiera ese día en vez de borrarlo.
+  const [isEditing, setIsEditing] = useState(false)
 
   useEffect(() => {
     if (!editEntry) return
@@ -19,6 +24,7 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
     for (const { id, qty } of editEntry.items) q[id] = qty
     setQuantities(q)
     setShowPreview(false)
+    setIsEditing(true)
     onEditDone()
   }, [editEntry])
 
@@ -72,15 +78,17 @@ export default function TabRegistro({ stock, saveDay, onToast, products, product
       return
     }
     const items = activeItems.map(([id, qty]) => ({ id, qty }))
-    saveDay(date, items, type)
+    saveDay(date, items, type, { merge: !isEditing })
     setQuantities({})
     setShowPreview(false)
+    setIsEditing(false)
     onToast(type === 'entrada' ? `Entrada ${date} guardada` : `Registro ${date} guardado`, 'success')
   }
 
   const handleClear = () => {
     setQuantities({})
     setShowPreview(false)
+    setIsEditing(false)
     onToast('Registro limpiado', 'info')
   }
 
