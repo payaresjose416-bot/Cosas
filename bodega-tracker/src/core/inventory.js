@@ -10,10 +10,25 @@
 // `deleteDay` solo tocan `history`: el efecto sobre el stock calculado es
 // automático, no hay nada que "revertir" aparte.
 
-export function historyForSaveDay(rawHistory, { date, items, type = 'salida', now = Date.now() }) {
+// merge: true combina `items` con lo que ya hubiera ese día/tipo (suma
+// cantidades por producto) en vez de reemplazar la entrada entera. Así un
+// segundo registro para el mismo día desde la pestaña Registro se acumula;
+// editar una entrada existente desde Historial sigue reemplazando (merge
+// default false), porque ahí el formulario ya trae todos los items del día.
+export function historyForSaveDay(rawHistory, { date, items, type = 'salida', merge = false, now = Date.now() }) {
+  const existing = merge
+    ? rawHistory.find(h => h.date === date && (h.type || 'salida') === type && !h.deleted)
+    : null
+  const mergedItems = existing ? combineItems(existing.items, items) : items
   const filtered = rawHistory.filter(h => !(h.date === date && (h.type || 'salida') === type))
-  return [...filtered, { date, type, items, updatedAt: now }]
+  return [...filtered, { date, type, items: mergedItems, updatedAt: now }]
     .sort((a, b) => a.date.localeCompare(b.date))
+}
+
+function combineItems(existingItems, newItems) {
+  const qtyById = new Map(existingItems.map(i => [i.id, i.qty]))
+  for (const { id, qty } of newItems) qtyById.set(id, (qtyById.get(id) || 0) + qty)
+  return Array.from(qtyById, ([id, qty]) => ({ id, qty }))
 }
 
 // Tombstone en vez de borrado real: al fusionar con la nube gana por updatedAt
